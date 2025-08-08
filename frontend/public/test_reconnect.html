@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Auto-Reconnect Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .connected { background-color: #d4edda; color: #155724; }
+        .disconnected { background-color: #f8d7da; color: #721c24; }
+        .connecting { background-color: #fff3cd; color: #856404; }
+        .log {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #6c757d; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔌 WebSocket Auto-Reconnect Test</h1>
+        
+        <div id="status" class="status disconnected">
+            🔴 Disconnected
+        </div>
+        
+        <div>
+            <button onclick="connectWebSocket()">Connect</button>
+            <button onclick="disconnectWebSocket()">Disconnect</button>
+            <button onclick="sendTestMessage()" id="sendBtn" disabled>Send Test Message</button>
+            <button onclick="clearLog()">Clear Log</button>
+        </div>
+        
+        <h3>📊 Connection Stats</h3>
+        <div>
+            <strong>Reconnect Attempts:</strong> <span id="attempts">0</span> / 10<br>
+            <strong>Messages Sent:</strong> <span id="messageCount">0</span><br>
+            <strong>Messages Received:</strong> <span id="receivedCount">0</span><br>
+            <strong>Last Connected:</strong> <span id="lastConnected">Never</span>
+        </div>
+        
+        <h3>📝 Connection Log</h3>
+        <div id="log" class="log"></div>
+    </div>
+
+    <script>
+        let ws = null;
+        let reconnectAttempts = 0;
+        let maxReconnectAttempts = 10;
+        let reconnectTimeout = null;
+        let messageCount = 0;
+        let receivedCount = 0;
+        let isManualDisconnect = false;
+
+        function log(message) {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `[${timestamp}] ${message}\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(`[WebSocket Test] ${message}`);
+        }
+
+        function updateStatus(status, message) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.className = `status ${status}`;
+            statusDiv.textContent = message;
+            
+            const sendBtn = document.getElementById('sendBtn');
+            sendBtn.disabled = status !== 'connected';
+        }
+
+        function updateStats() {
+            document.getElementById('attempts').textContent = reconnectAttempts;
+            document.getElementById('messageCount').textContent = messageCount;
+            document.getElementById('receivedCount').textContent = receivedCount;
+        }
+
+        function connectWebSocket() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                log('⚠️ Already connected');
+                return;
+            }
+
+            isManualDisconnect = false;
+            log('🔄 Attempting to connect...');
+            updateStatus('connecting', '🟡 Connecting...');
+
+            try {
+                ws = new WebSocket('ws://localhost:8000/ws');
+
+                ws.onopen = function(event) {
+                    log('✅ WebSocket connected successfully');
+                    updateStatus('connected', '🟢 Connected');
+                    reconnectAttempts = 0;
+                    document.getElementById('lastConnected').textContent = new Date().toLocaleTimeString();
+                    updateStats();
+
+                    // Subscribe to data
+                    const subscribeMessage = {
+                        type: 'subscribe',
+                        topics: ['pose', 'odom', 'scan', 'battery', 'map', 'diagnostics', 'log', 'ultrasonic', 'node_status']
+                    };
+                    ws.send(JSON.stringify(subscribeMessage));
+                    log('📡 Subscription message sent');
+                };
+
+                ws.onclose = function(event) {
+                    log(`❌ WebSocket closed (Code: ${event.code}, Reason: ${event.reason})`);
+                    updateStatus('disconnected', '🔴 Disconnected');
+
+                    // Auto-reconnect logic (same as frontend)
+                    if (!isManualDisconnect && reconnectAttempts < maxReconnectAttempts) {
+                        const delay = 2000 * (reconnectAttempts + 1); // Exponential backoff
+                        reconnectAttempts++;
+                        updateStats();
+                        
+                        log(`🔄 Scheduling reconnection attempt ${reconnectAttempts}/${maxReconnectAttempts} in ${delay}ms`);
+                        
+                        reconnectTimeout = setTimeout(() => {
+                            log(`🔄 Reconnection attempt ${reconnectAttempts}/${maxReconnectAttempts}`);
+                            connectWebSocket();
+                        }, delay);
+                    } else if (reconnectAttempts >= maxReconnectAttempts) {
+                        log('❌ Max reconnection attempts reached');
+                    }
+                };
+
+                ws.onerror = function(error) {
+                    log(`❌ WebSocket error: ${error}`);
+                    updateStatus('disconnected', '🔴 Error');
+                };
+
+                ws.onmessage = function(event) {
+                    receivedCount++;
+                    updateStats();
+                    
+                    try {
+                        const message = JSON.parse(event.data);
+                        log(`📨 Received: ${message.type} - ${message.data_type || 'unknown'}`);
+                    } catch (e) {
+                        log(`📨 Received raw: ${event.data.substring(0, 100)}...`);
+                    }
+                };
+
+            } catch (error) {
+                log(`❌ Failed to create WebSocket: ${error}`);
+                updateStatus('disconnected', '🔴 Failed');
+            }
+        }
+
+        function disconnectWebSocket() {
+            isManualDisconnect = true;
+            
+            if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout);
+                reconnectTimeout = null;
+                log('🛑 Cancelled reconnection timer');
+            }
+            
+            if (ws) {
+                ws.close();
+                log('🛑 Manual disconnect');
+            }
+        }
+
+        function sendTestMessage() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                const testMessage = {
+                    type: 'command',
+                    command: 'test',
+                    params: { timestamp: Date.now() }
+                };
+                
+                ws.send(JSON.stringify(testMessage));
+                messageCount++;
+                updateStats();
+                log(`📤 Sent test message #${messageCount}`);
+            } else {
+                log('❌ Cannot send message - not connected');
+            }
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+
+        // Auto-connect on page load
+        window.onload = function() {
+            log('🚀 WebSocket Auto-Reconnect Test Started');
+            connectWebSocket();
+        };
+
+        // Cleanup on page unload
+        window.onbeforeunload = function() {
+            isManualDisconnect = true;
+            if (ws) {
+                ws.close();
+            }
+        };
+    </script>
+</body>
+</html>
