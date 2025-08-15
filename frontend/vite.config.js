@@ -16,6 +16,11 @@ export default defineConfig({
         ws: true,
         changeOrigin: true
       }
+    },
+    watch: {
+      usePolling: true,
+      interval: 1000,
+      ignored: ['**/node_modules/**', '**/.git/**', '**/dist/**']
     }
   },
   build: {

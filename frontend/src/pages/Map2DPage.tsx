@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef, use } from 'react';
 import {
   Grid, Paper, Typography, Box, Button, FormControlLabel, Switch,
-  Card, CardContent, Divider, Alert, Snackbar, IconButton, Tooltip
+  Card, CardContent, Divider, Alert, Snackbar, IconButton, Tooltip, Collapse
 } from '@mui/material';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import {
   Refresh as RefreshIcon,
   ArrowUpward,
@@ -51,6 +53,9 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
   // Height state
   const mainRef = useRef(null);
   const [mainHeight, setMainHeight] = useState("auto");
+
+  // Control collapse button
+  const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
     if (mainRef.current) {
@@ -416,9 +421,9 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
       </Typography>
 
       <Grid container spacing={3}>
-        <Grid container spacing={2}>
+        <Grid item xs={12} md={9} mt={0}>
         {/* Main Map Display */}
-        <Grid item xs={12} md={9}>
+        <Grid>
           <Paper ref={mainRef} sx={{ p: 2 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
               <Tooltip title="Force Refresh Map Data">
@@ -442,7 +447,7 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
             {/* Embedded Robot Control - Bottom Right Corner */}
             <Paper
               sx={{
-                position: 'absolute',
+                position: 'fixed',
                 bottom: 16,
                 right: 16,
                 p: 2,
@@ -453,126 +458,147 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
                 minWidth: 200
               }}
             >
-              <Typography variant="subtitle2" gutterBottom sx={{ textAlign: 'center', fontWeight: 'bold' }}>
-                🎮 Robot Control (WASD)
-              </Typography>
+              {/* Header + nút thu gọn */}
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between'
+                }}
+              >
+                <Typography
+                  variant="subtitle2"
+                  gutterBottom
+                  sx={{ textAlign: 'center', fontWeight: 'bold', m: 0 }}
+                >
+                  🎮 Robot Control (WASD)
+                </Typography>
+                <IconButton
+                  size="small"
+                  onClick={() => setCollapsed(prev => !prev)}
+                >
+                  {collapsed ? <ExpandMoreIcon /> : <ExpandLessIcon />}
+                </IconButton>
+              </Box>
 
               {/* Visual WASD Layout - Non-interactive */}
-              <Grid container spacing={0.5} sx={{ mb: 1 }}>
-                <Grid item xs={4}></Grid>
-                <Grid item xs={4}>
-                  <IconButton
-                    disabled={!isConnected}
-                    color={isMoving ? "secondary" : "primary"}
-                    size="small"
-                    sx={{
-                      width: '100%',
-                      aspectRatio: '1',
-                      border: '1px solid #ccc',
-                      borderRadius: 1,
-                      fontSize: '10px',
-                      '&:disabled': { opacity: 0.5 }
-                    }}
-                  >
-                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                      <ArrowUpward fontSize="small" />
-                      <Typography variant="caption" sx={{ fontSize: '8px' }}>W</Typography>
-                    </Box>
-                  </IconButton>
-                </Grid>
-                <Grid item xs={4}></Grid>
+              <Collapse in={!collapsed}>
+                <Grid container spacing={0.5} sx={{ mb: 1 }}>
+                  <Grid item xs={4}></Grid>
+                  <Grid item xs={4}>
+                    <IconButton
+                      disabled={!isConnected}
+                      color={isMoving ? "secondary" : "primary"}
+                      size="small"
+                      sx={{
+                        width: '100%',
+                        aspectRatio: '1',
+                        border: '1px solid #ccc',
+                        borderRadius: 1,
+                        fontSize: '10px',
+                        '&:disabled': { opacity: 0.5 }
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        <ArrowUpward fontSize="small" />
+                        <Typography variant="caption" sx={{ fontSize: '8px' }}>W</Typography>
+                      </Box>
+                    </IconButton>
+                  </Grid>
+                  <Grid item xs={4}></Grid>
 
-                <Grid item xs={4}>
-                  <IconButton
-                    disabled={!isConnected}
-                    color={isMoving ? "secondary" : "primary"}
-                    size="small"
-                    sx={{
-                      width: '100%',
-                      aspectRatio: '1',
-                      border: '1px solid #ccc',
-                      borderRadius: 1,
-                      fontSize: '10px',
-                      '&:disabled': { opacity: 0.5 }
-                    }}
-                  >
-                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                      <ArrowBack fontSize="small" />
-                      <Typography variant="caption" sx={{ fontSize: '8px' }}>A</Typography>
-                    </Box>
-                  </IconButton>
-                </Grid>
-                <Grid item xs={4}>
-                  <IconButton
-                    onClick={handleStop}
-                    disabled={!isConnected}
-                    color="error"
-                    size="small"
-                    sx={{
-                      width: '100%',
-                      aspectRatio: '1',
-                      border: '1px solid #ccc',
-                      borderRadius: 1,
-                      fontSize: '10px',
-                      '&:disabled': { opacity: 0.5 }
-                    }}
-                  >
-                    <Stop fontSize="small" />
-                  </IconButton>
-                </Grid>
-                <Grid item xs={4}>
-                  <IconButton
-                    disabled={!isConnected}
-                    color={isMoving ? "secondary" : "primary"}
-                    size="small"
-                    sx={{
-                      width: '100%',
-                      aspectRatio: '1',
-                      border: '1px solid #ccc',
-                      borderRadius: 1,
-                      fontSize: '10px',
-                      '&:disabled': { opacity: 0.5 }
-                    }}
-                  >
-                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                      <ArrowForward fontSize="small" />
-                      <Typography variant="caption" sx={{ fontSize: '8px' }}>D</Typography>
-                    </Box>
-                  </IconButton>
+                  <Grid item xs={4}>
+                    <IconButton
+                      disabled={!isConnected}
+                      color={isMoving ? "secondary" : "primary"}
+                      size="small"
+                      sx={{
+                        width: '100%',
+                        aspectRatio: '1',
+                        border: '1px solid #ccc',
+                        borderRadius: 1,
+                        fontSize: '10px',
+                        '&:disabled': { opacity: 0.5 }
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        <ArrowBack fontSize="small" />
+                        <Typography variant="caption" sx={{ fontSize: '8px' }}>A</Typography>
+                      </Box>
+                    </IconButton>
+                  </Grid>
+                  <Grid item xs={4}>
+                    <IconButton
+                      onClick={handleStop}
+                      disabled={!isConnected}
+                      color="error"
+                      size="small"
+                      sx={{
+                        width: '100%',
+                        aspectRatio: '1',
+                        border: '1px solid #ccc',
+                        borderRadius: 1,
+                        fontSize: '10px',
+                        '&:disabled': { opacity: 0.5 }
+                      }}
+                    >
+                      <Stop fontSize="small" />
+                    </IconButton>
+                  </Grid>
+                  <Grid item xs={4}>
+                    <IconButton
+                      disabled={!isConnected}
+                      color={isMoving ? "secondary" : "primary"}
+                      size="small"
+                      sx={{
+                        width: '100%',
+                        aspectRatio: '1',
+                        border: '1px solid #ccc',
+                        borderRadius: 1,
+                        fontSize: '10px',
+                        '&:disabled': { opacity: 0.5 }
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        <ArrowForward fontSize="small" />
+                        <Typography variant="caption" sx={{ fontSize: '8px' }}>D</Typography>
+                      </Box>
+                    </IconButton>
+                  </Grid>
+
+                  <Grid item xs={4}></Grid>
+                  <Grid item xs={4}>
+                    <IconButton
+                      disabled={!isConnected}
+                      color={isMoving ? "secondary" : "primary"}
+                      size="small"
+                      sx={{
+                        width: '100%',
+                        aspectRatio: '1',
+                        border: '1px solid #ccc',
+                        borderRadius: 1,
+                        fontSize: '10px',
+                        '&:disabled': { opacity: 0.5 }
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        <ArrowDownward fontSize="small" />
+                        <Typography variant="caption" sx={{ fontSize: '8px' }}>S</Typography>
+                      </Box>
+                    </IconButton>
+                  </Grid>
+                  <Grid item xs={4}></Grid>
                 </Grid>
 
-                <Grid item xs={4}></Grid>
-                <Grid item xs={4}>
-                  <IconButton
-                    disabled={!isConnected}
-                    color={isMoving ? "secondary" : "primary"}
-                    size="small"
-                    sx={{
-                      width: '100%',
-                      aspectRatio: '1',
-                      border: '1px solid #ccc',
-                      borderRadius: 1,
-                      fontSize: '10px',
-                      '&:disabled': { opacity: 0.5 }
-                    }}
-                  >
-                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                      <ArrowDownward fontSize="small" />
-                      <Typography variant="caption" sx={{ fontSize: '8px' }}>S</Typography>
-                    </Box>
-                  </IconButton>
-                </Grid>
-                <Grid item xs={4}></Grid>
-              </Grid>
-
-              <Typography variant="caption" sx={{
-                display: 'block',
-                textAlign: 'center',
-                color: isConnected ? 'text.secondary' : 'error.main',
-                fontSize: '10px'
-              }}>
-                {isConnected ? 'Press WASD keys to move' : 'Not connected'}
-              </Typography>
+                <Typography variant="caption" sx={{
+                  display: 'block',
+                  textAlign: 'center',
+                  color: isConnected ? 'text.secondary' : 'error.main',
+                  fontSize: '10px'
+                }}>
+                  {isConnected ? 'Press WASD keys to move' : 'Not connected'}
+                </Typography>
+              </Collapse>
             </Paper>
           </Paper>
           </Grid>
