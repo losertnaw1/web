@@ -52,7 +52,7 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
   // Fixed canvas and map settings - no pan/zoom
   const canvasWidth = 800;
   const canvasHeight = 600;
-  const mapScale = Math.min(canvasWidth / (mapData?.width || 100), canvasHeight / (mapData?.height || 100)) * 0.8; // Use 80% of available space
+  const mapScale = Math.min(canvasWidth / (mapData?.width || 100), canvasHeight / (mapData?.height || 100)); // Use 80% of available space
 
   // Debug log on component mount
   console.log('🗺️ MapViewer2D mounted!');

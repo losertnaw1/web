@@ -580,7 +580,7 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
 
         {/* Map Controls */}
         <Grid item xs={12} md={3}>
-          <Paper sx={{ p: 3, overflow: 'auto' ,height: mainHeight }}>
+          <Paper sx={{ p: 3, overflow: 'auto' , height: mainHeight }}>
             <Typography variant="h6" gutterBottom>
               🎛️ Map Controls
             </Typography>
