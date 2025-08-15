@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Grid, Paper, Typography, Box, Button, FormControlLabel, Switch,
   Card, CardContent, Divider, Alert, Snackbar, IconButton, Tooltip
@@ -35,6 +35,16 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
   // UI states
   const [loading, setLoading] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' as 'success' | 'error' | 'info' });
+
+  // Height state
+  const mainRef = useRef(null);
+  const [mainHeight, setMainHeight] = useState('auto');
+
+  useEffect(() => {
+    if (mainRef.current) {
+      setMainHeight(mainRef.current.offsetHeight + 'px');
+    }
+  }, [/* dependencies like data that changes size */]);
 
   // Load current switch states and map data on component mount
   useEffect(() => {
@@ -316,285 +326,287 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
       </Typography>
 
       <Grid container spacing={3}>
-        
+        <Grid container spacing={2}>
         {/* Main Map Display */}
-        <Grid item xs={12} md={9}>
-          <Paper sx={{ p: 2, height: '700px' }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Tooltip title="Force Refresh Map Data">
-                <IconButton
-                  onClick={() => fetchMapData(true)}
-                  disabled={loading}
-                  color="primary"
-                >
-                  <RefreshIcon />
-                </IconButton>
-              </Tooltip>
-            </Box>
-            <MapViewer
-              robotData={robotData}
-              sensorData={sensorData}
-              onMapClick={handleMapClick}
-              showLidar={showLidar}
-              isSettingInitialPose={positionMode === 'send_to_ros'}
-            />
-          </Paper>
-        </Grid>
+          <Grid item xs={12} md={9} >
+            <Paper ref={mainRef} sx={{ p: 2 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Tooltip title="Force Refresh Map Data">
+                  <IconButton
+                    onClick={() => fetchMapData(true)}
+                    disabled={loading}
+                    color="primary"
+                  >
+                    <RefreshIcon />
+                  </IconButton>
+                </Tooltip>
+              </Box>
+              <MapViewer
+                robotData={robotData}
+                sensorData={sensorData}
+                onMapClick={handleMapClick}
+                showLidar={showLidar}
+                isSettingInitialPose={positionMode === 'send_to_ros'}
+              />
+            </Paper>
+          </Grid>
 
-        {/* Map Controls */}
-        <Grid item xs={12} md={3}>
-          <Paper sx={{ p: 3, height: '700px', overflow: 'auto' }}>
-            <Typography variant="h6" gutterBottom>
-              🎛️ Map Controls
-            </Typography>
+          {/* Map Controls */}
+          <Grid item xs={12} md={3}>
+            <Paper sx={{ p: 3, overflow: 'auto' , height: mainHeight }}>
+              <Typography variant="h6" gutterBottom>
+                🎛️ Map Controls
+              </Typography>
 
-            {/* System Switch Controls */}
-            <Card sx={{ mb: 2 }}>
-              <CardContent>
-                <Typography variant="subtitle1" gutterBottom>
-                  🗺️ Map Data Source
+              {/* System Switch Controls */}
+              <Card sx={{ mb: 2 }}>
+                <CardContent>
+                  <Typography variant="subtitle1" gutterBottom>
+                    🗺️ Map Data Source
+                  </Typography>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={mapSource === 'dynamic_map'}
+                        onChange={(e) => handleMapSourceSwitch(e.target.checked ? 'dynamic_map' : 'static_map')}
+                        disabled={loading}
+                      />
+                    }
+                    label={mapSource === 'static_map' ? 'Static Map' : 'Dynamic Map'}
+                  />
+                  <Typography variant="caption" display="block" color="text.secondary">
+                    {mapSource === 'static_map'
+                      ? 'Using pre-built static map'
+                      : 'Using real-time SLAM map'}
+                  </Typography>
+                </CardContent>
+              </Card>
+
+              <Card sx={{ mb: 2 }}>
+                <CardContent>
+                  <Typography variant="subtitle1" gutterBottom>
+                    📍 Robot Position Mode
+                  </Typography>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={positionMode === 'send_to_ros'}
+                        onChange={(e) => handlePositionModeSwitch(e.target.checked ? 'send_to_ros' : 'receive_from_ros')}
+                        disabled={loading}
+                      />
+                    }
+                    label={positionMode === 'receive_from_ros' ? 'Receive from ROS' : 'Send to ROS'}
+                  />
+                  <Typography variant="caption" display="block" color="text.secondary">
+                    {positionMode === 'receive_from_ros'
+                      ? 'Robot position updates from ROS'
+                      : 'Click map to set initial pose'}
+                  </Typography>
+                  {positionMode === 'send_to_ros' && (
+                    <Alert severity="info" sx={{ mt: 1 }}>
+                      Click on the map to set robot initial position
+                    </Alert>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card sx={{ mb: 2 }}>
+                <CardContent>
+                  <Typography variant="subtitle1" gutterBottom>
+                    🤖 Robot Running Mode
+                  </Typography>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={runningMode === 'slam_auto'}
+                        onChange={(e) => handleRunningModeSwitch(e.target.checked ? 'slam_auto' : 'line_following')}
+                        disabled={loading}
+                      />
+                    }
+                    label={runningMode === 'line_following' ? 'Line Following' : 'SLAM Auto'}
+                  />
+                  <Typography variant="caption" display="block" color="text.secondary">
+                    {runningMode === 'line_following'
+                      ? 'Robot follows predefined paths'
+                      : 'Autonomous navigation with SLAM'}
+                  </Typography>
+                </CardContent>
+              </Card>
+
+              <Divider sx={{ my: 2 }} />
+
+              {/* Existing Map Display Controls */}
+              <Typography variant="subtitle1" gutterBottom>
+                🎨 Display Options
+              </Typography>
+              
+              {/* Display Options */}
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Display Options:
                 </Typography>
                 <FormControlLabel
                   control={
                     <Switch
-                      checked={mapSource === 'dynamic_map'}
-                      onChange={(e) => handleMapSourceSwitch(e.target.checked ? 'dynamic_map' : 'static_map')}
-                      disabled={loading}
+                      checked={showLidar}
+                      onChange={(e) => setShowLidar(e.target.checked)}
                     />
                   }
-                  label={mapSource === 'static_map' ? 'Static Map' : 'Dynamic Map'}
+                  label="Show LiDAR Scan"
                 />
-                <Typography variant="caption" display="block" color="text.secondary">
-                  {mapSource === 'static_map'
-                    ? 'Using pre-built static map'
-                    : 'Using real-time SLAM map'}
-                </Typography>
-              </CardContent>
-            </Card>
-
-            <Card sx={{ mb: 2 }}>
-              <CardContent>
-                <Typography variant="subtitle1" gutterBottom>
-                  📍 Robot Position Mode
-                </Typography>
                 <FormControlLabel
                   control={
                     <Switch
-                      checked={positionMode === 'send_to_ros'}
-                      onChange={(e) => handlePositionModeSwitch(e.target.checked ? 'send_to_ros' : 'receive_from_ros')}
-                      disabled={loading}
+                      checked={showPath}
+                      onChange={(e) => setShowPath(e.target.checked)}
                     />
                   }
-                  label={positionMode === 'receive_from_ros' ? 'Receive from ROS' : 'Send to ROS'}
+                  label="Show Path"
                 />
-                <Typography variant="caption" display="block" color="text.secondary">
-                  {positionMode === 'receive_from_ros'
-                    ? 'Robot position updates from ROS'
-                    : 'Click map to set initial pose'}
-                </Typography>
-                {positionMode === 'send_to_ros' && (
-                  <Alert severity="info" sx={{ mt: 1 }}>
-                    Click on the map to set robot initial position
-                  </Alert>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card sx={{ mb: 2 }}>
-              <CardContent>
-                <Typography variant="subtitle1" gutterBottom>
-                  🤖 Robot Running Mode
-                </Typography>
                 <FormControlLabel
                   control={
                     <Switch
-                      checked={runningMode === 'slam_auto'}
-                      onChange={(e) => handleRunningModeSwitch(e.target.checked ? 'slam_auto' : 'line_following')}
-                      disabled={loading}
+                      checked={showGoals}
+                      onChange={(e) => setShowGoals(e.target.checked)}
                     />
                   }
-                  label={runningMode === 'line_following' ? 'Line Following' : 'SLAM Auto'}
+                  label="Show Goals"
                 />
-                <Typography variant="caption" display="block" color="text.secondary">
-                  {runningMode === 'line_following'
-                    ? 'Robot follows predefined paths'
-                    : 'Autonomous navigation with SLAM'}
-                </Typography>
-              </CardContent>
-            </Card>
-
-            <Divider sx={{ my: 2 }} />
-
-            {/* Existing Map Display Controls */}
-            <Typography variant="subtitle1" gutterBottom>
-              🎨 Display Options
-            </Typography>
-            
-            {/* Display Options */}
-            <Box sx={{ mb: 3 }}>
-              <Typography variant="subtitle2" gutterBottom>
-                Display Options:
-              </Typography>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={showLidar}
-                    onChange={(e) => setShowLidar(e.target.checked)}
-                  />
-                }
-                label="Show LiDAR Scan"
-              />
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={showPath}
-                    onChange={(e) => setShowPath(e.target.checked)}
-                  />
-                }
-                label="Show Path"
-              />
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={showGoals}
-                    onChange={(e) => setShowGoals(e.target.checked)}
-                  />
-                }
-                label="Show Goals"
-              />
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={autoCenter}
-                    onChange={(e) => setAutoCenter(e.target.checked)}
-                  />
-                }
-                label="Auto Center on Robot"
-              />
-            </Box>
-
-            {/* Quick Navigation */}
-            <Box sx={{ mb: 3 }}>
-              <Typography variant="subtitle2" gutterBottom>
-                Quick Navigation:
-              </Typography>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  onClick={() => handleMapClick(0, 0)}
-                  disabled={!isConnected}
-                >
-                  🏠 Go Home (0, 0)
-                </Button>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  onClick={() => handleMapClick(2, 2)}
-                  disabled={!isConnected}
-                >
-                  📍 Point A (2, 2)
-                </Button>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  onClick={() => handleMapClick(-2, 2)}
-                  disabled={!isConnected}
-                >
-                  📍 Point B (-2, 2)
-                </Button>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  onClick={() => handleMapClick(0, -2)}
-                  disabled={!isConnected}
-                >
-                  📍 Point C (0, -2)
-                </Button>
-                <Button
-                  variant="contained"
-                  color="error"
-                  size="small"
-                  onClick={() => onCommand('cancel_navigation')}
-                  disabled={!isConnected}
-                >
-                  ❌ Cancel Goal
-                </Button>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={autoCenter}
+                      onChange={(e) => setAutoCenter(e.target.checked)}
+                    />
+                  }
+                  label="Auto Center on Robot"
+                />
               </Box>
-            </Box>
 
-            {/* Robot Status */}
-            <Box sx={{ mb: 3 }}>
-              <Typography variant="subtitle2" gutterBottom>
-                Robot Status:
-              </Typography>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                <Typography variant="body2">
-                  <strong>Position:</strong>
+              {/* Quick Navigation */}
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Quick Navigation:
                 </Typography>
-                <Typography variant="caption" fontFamily="monospace">
-                  X: {(robotData.pose?.position?.x || 0).toFixed(3)} m
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => handleMapClick(0, 0)}
+                    disabled={!isConnected}
+                  >
+                    🏠 Go Home (0, 0)
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => handleMapClick(2, 2)}
+                    disabled={!isConnected}
+                  >
+                    📍 Point A (2, 2)
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => handleMapClick(-2, 2)}
+                    disabled={!isConnected}
+                  >
+                    📍 Point B (-2, 2)
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => handleMapClick(0, -2)}
+                    disabled={!isConnected}
+                  >
+                    📍 Point C (0, -2)
+                  </Button>
+                  <Button
+                    variant="contained"
+                    color="error"
+                    size="small"
+                    onClick={() => onCommand('cancel_navigation')}
+                    disabled={!isConnected}
+                  >
+                    ❌ Cancel Goal
+                  </Button>
+                </Box>
+              </Box>
+
+              {/* Robot Status */}
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Robot Status:
                 </Typography>
-                <Typography variant="caption" fontFamily="monospace">
-                  Y: {(robotData.pose?.position?.y || 0).toFixed(3)} m
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  <Typography variant="body2">
+                    <strong>Position:</strong>
+                  </Typography>
+                  <Typography variant="caption" fontFamily="monospace">
+                    X: {(robotData.pose?.position?.x || 0).toFixed(3)} m
+                  </Typography>
+                  <Typography variant="caption" fontFamily="monospace">
+                    Y: {(robotData.pose?.position?.y || 0).toFixed(3)} m
+                  </Typography>
+                  <Typography variant="caption" fontFamily="monospace">
+                    θ: {robotData.pose?.orientation ?
+                      (Math.atan2(2 * (robotData.pose.orientation.w * robotData.pose.orientation.z),
+                      1 - 2 * (robotData.pose.orientation.z ** 2)) * 180 / Math.PI).toFixed(1) : 0}°
+                  </Typography>
+                </Box>
+              </Box>
+
+              {/* Map Information */}
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Map Information:
                 </Typography>
-                <Typography variant="caption" fontFamily="monospace">
-                  θ: {robotData.pose?.orientation ?
-                    (Math.atan2(2 * (robotData.pose.orientation.w * robotData.pose.orientation.z),
-                    1 - 2 * (robotData.pose.orientation.z ** 2)) * 180 / Math.PI).toFixed(1) : 0}°
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  <Typography variant="caption">
+                    <strong>Resolution:</strong> 0.05 m/pixel
+                  </Typography>
+                  <Typography variant="caption">
+                    <strong>Size:</strong> 100×100 pixels
+                  </Typography>
+                  <Typography variant="caption">
+                    <strong>Area:</strong> 5×5 meters
+                  </Typography>
+                  <Typography variant="caption">
+                    <strong>Origin:</strong> (-2.5, -2.5)
+                  </Typography>
+                </Box>
+              </Box>
+
+              {/* Connection Status */}
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Connection:
+                </Typography>
+                <Typography 
+                  variant="body2" 
+                  color={isConnected ? 'success.main' : 'error.main'}
+                >
+                  {isConnected ? '🟢 Connected' : '🔴 Disconnected'}
                 </Typography>
               </Box>
-            </Box>
 
-            {/* Map Information */}
-            <Box sx={{ mb: 3 }}>
-              <Typography variant="subtitle2" gutterBottom>
-                Map Information:
-              </Typography>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                <Typography variant="caption">
-                  <strong>Resolution:</strong> 0.05 m/pixel
+              {/* LiDAR Status */}
+              <Box>
+                <Typography variant="subtitle2" gutterBottom>
+                  LiDAR Status:
                 </Typography>
-                <Typography variant="caption">
-                  <strong>Size:</strong> 100×100 pixels
-                </Typography>
-                <Typography variant="caption">
-                  <strong>Area:</strong> 5×5 meters
-                </Typography>
-                <Typography variant="caption">
-                  <strong>Origin:</strong> (-2.5, -2.5)
+                <Typography 
+                  variant="body2" 
+                  color={sensorData.scan ? 'success.main' : 'error.main'}
+                >
+                  {sensorData.scan ? 
+                    `🟢 Active (${sensorData.scan.ranges.filter(r => r !== null).length} points)` : 
+                    '🔴 No Data'}
                 </Typography>
               </Box>
-            </Box>
+            </Paper>
+          </Grid>
 
-            {/* Connection Status */}
-            <Box sx={{ mb: 3 }}>
-              <Typography variant="subtitle2" gutterBottom>
-                Connection:
-              </Typography>
-              <Typography 
-                variant="body2" 
-                color={isConnected ? 'success.main' : 'error.main'}
-              >
-                {isConnected ? '🟢 Connected' : '🔴 Disconnected'}
-              </Typography>
-            </Box>
-
-            {/* LiDAR Status */}
-            <Box>
-              <Typography variant="subtitle2" gutterBottom>
-                LiDAR Status:
-              </Typography>
-              <Typography 
-                variant="body2" 
-                color={sensorData.scan ? 'success.main' : 'error.main'}
-              >
-                {sensorData.scan ? 
-                  `🟢 Active (${sensorData.scan.ranges.filter(r => r !== null).length} points)` : 
-                  '🔴 No Data'}
-              </Typography>
-            </Box>
-          </Paper>
         </Grid>
 
         {/* Map Legend */}

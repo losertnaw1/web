@@ -51,7 +51,7 @@ const defaultConfig = {
   // Development/Debug settings
   debug: {
     enabled: isDevelopment,
-    logLevel: isDevelopment ? 'debug' : 'info',
+    logLevel: isDevelopment ? 'debug' : 'debug',
     showPerformanceMetrics: isDevelopment,
   }
 };
@@ -84,7 +84,7 @@ const environmentConfigs = {
   // Custom environment for remote development
   remote: {
     backend: {
-      host: '192.168.1.12', // Current remote server
+      host: '192.168.0.220', // Current remote server
       port: '8000',
     },
     debug: {
