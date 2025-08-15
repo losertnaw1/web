@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
-import { Box, AppBar, Toolbar, Typography } from '@mui/material';
+import { Box, AppBar, Toolbar, Typography, IconButton, Backdrop } from '@mui/material';
+import { Menu as MenuIcon } from '@mui/icons-material';
 
 // Import components
 import Sidebar from './components/Sidebar';
@@ -77,6 +78,7 @@ const theme = createTheme({
 function App() {
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
   const [selectedPage, setSelectedPage] = useState('dashboard');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // WebSocket connection
   const {
@@ -293,6 +295,20 @@ function App() {
           selectedPage={selectedPage}
           onPageChange={setSelectedPage}
           isConnected={isConnected}
+          open={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+        />
+
+        {/* Backdrop for blur effect when sidebar is open */}
+        <Backdrop
+          open={sidebarOpen}
+          onClick={() => setSidebarOpen(false)}
+          sx={{
+            zIndex: (theme) => theme.zIndex.drawer - 1,
+            backdropFilter: 'blur(4px)',
+            backgroundColor: 'rgba(0, 0, 0, 0.3)',
+            transition: 'all 0.3s ease-in-out',
+          }}
         />
 
         {/* Main Content Area */}
@@ -301,6 +317,20 @@ function App() {
           {/* Top App Bar */}
           <AppBar position="static" sx={{ zIndex: (theme) => theme.zIndex.drawer - 1 }}>
             <Toolbar>
+              <IconButton
+                color="inherit"
+                aria-label="open drawer"
+                onClick={() => setSidebarOpen(true)}
+                edge="start"
+                sx={{
+                  mr: 2,
+                  '&:hover': {
+                    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                  }
+                }}
+              >
+                <MenuIcon />
+              </IconButton>
               <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
                 Indoor Autonomous Vehicle - {getPageTitle(selectedPage)}
               </Typography>

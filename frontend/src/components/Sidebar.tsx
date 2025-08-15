@@ -32,6 +32,8 @@ interface SidebarProps {
   selectedPage: string;
   onPageChange: (page: string) => void;
   isConnected: boolean;
+  open: boolean;
+  onClose: () => void;
 }
 
 interface MenuItem {
@@ -164,7 +166,7 @@ const categoryLabels = {
   system: '⚙️ System'
 };
 
-const Sidebar: React.FC<SidebarProps> = ({ selectedPage, onPageChange, isConnected }) => {
+const Sidebar: React.FC<SidebarProps> = ({ selectedPage, onPageChange, isConnected, open, onClose }) => {
   const drawerWidth = 280;
   
   const renderMenuItems = (category: string) => {
@@ -174,7 +176,10 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedPage, onPageChange, isConnect
       <ListItem key={item.id} disablePadding>
         <ListItemButton
           selected={selectedPage === item.id}
-          onClick={() => onPageChange(item.id)}
+          onClick={() => {
+            onPageChange(item.id);
+            onClose(); // Close sidebar when page is selected
+          }}
           sx={{
             borderRadius: 1,
             margin: '2px 8px',
@@ -223,7 +228,12 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedPage, onPageChange, isConnect
 
   return (
     <Drawer
-      variant="permanent"
+      variant="temporary"
+      open={open}
+      onClose={onClose}
+      ModalProps={{
+        keepMounted: true, // Better open performance on mobile.
+      }}
       sx={{
         width: drawerWidth,
         flexShrink: 0,
@@ -232,7 +242,8 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedPage, onPageChange, isConnect
           boxSizing: 'border-box',
           backgroundColor: '#ffffff',
           borderRight: '2px solid #e0e0e0',
-          boxShadow: '2px 0 8px rgba(0,0,0,0.1)'
+          boxShadow: '2px 0 8px rgba(0,0,0,0.1)',
+          transition: 'transform 0.3s ease-in-out',
         },
       }}
     >

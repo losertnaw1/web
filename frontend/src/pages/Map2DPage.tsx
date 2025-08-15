@@ -1,9 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef, use } from 'react';
 import {
   Grid, Paper, Typography, Box, Button, FormControlLabel, Switch,
   Card, CardContent, Divider, Alert, Snackbar, IconButton, Tooltip
 } from '@mui/material';
-import { Refresh as RefreshIcon } from '@mui/icons-material';
+import {
+  Refresh as RefreshIcon,
+  ArrowUpward,
+  ArrowDownward,
+  ArrowBack,
+  ArrowForward,
+  Stop
+} from '@mui/icons-material';
 import { RobotData, SensorData } from '../hooks/useWebSocket_simple';
 import MapViewer from '../components/MapViewer';
 import { getApiUrl } from '../config/config';
@@ -32,9 +39,24 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
   const [positionMode, setPositionMode] = useState<'receive_from_ros' | 'send_to_ros'>('receive_from_ros');
   const [runningMode, setRunningMode] = useState<'line_following' | 'slam_auto'>('line_following');
 
+  // Robot control states
+  const [linearSpeed, setLinearSpeed] = useState(0.2);
+  const [angularSpeed, setAngularSpeed] = useState(0.5);
+  const [isMoving, setIsMoving] = useState(false);
+
   // UI states
   const [loading, setLoading] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' as 'success' | 'error' | 'info' });
+
+  // Height state
+  const mainRef = useRef(null);
+  const [mainHeight, setMainHeight] = useState("auto");
+
+  useEffect(() => {
+    if (mainRef.current) {
+      setMainHeight(mainRef.current.clientHeight + "px");
+    }
+  }, [mainRef]);
 
   // Load current switch states and map data on component mount
   useEffect(() => {
@@ -128,6 +150,84 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
       logError('Failed to load switch states:', 'Map2D', error);
     }
   };
+
+  // Robot movement control functions (same as RobotControl component)
+  const handleMove = useCallback((linear_x: number, linear_y: number, angular_z: number) => {
+    if (!isConnected) {
+      logInfo('Movement command ignored - not connected', 'Map2D-Control');
+      return;
+    }
+
+    const moveParams = {
+      linear_x: linear_x * linearSpeed,
+      linear_y: linear_y * linearSpeed,
+      angular_z: angular_z * angularSpeed
+    };
+
+    logInfo(`WASD movement command`, 'Map2D-Control', moveParams);
+    onCommand('move', moveParams);
+    setIsMoving(linear_x !== 0 || linear_y !== 0 || angular_z !== 0);
+  }, [isConnected, linearSpeed, angularSpeed, onCommand]);
+
+  const handleStop = useCallback(() => {
+    logInfo('Stop command (WASD)', 'Map2D-Control');
+    onCommand('move', { linear_x: 0, linear_y: 0, angular_z: 0 });
+    setIsMoving(false);
+  }, [onCommand]);
+
+  // Keyboard event handling for WASD controls
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Only handle WASD keys when connected and not typing in input fields
+      if (!isConnected || event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      // Prevent default behavior for WASD keys
+      const key = event.key.toLowerCase();
+      if (['w', 'a', 's', 'd'].includes(key)) {
+        event.preventDefault();
+
+        switch (key) {
+          case 'w': // Forward
+            handleMove(1, 0, 0);
+            break;
+          case 's': // Backward
+            handleMove(-1, 0, 0);
+            break;
+          case 'a': // Left
+            handleMove(0, 1, 0);
+            break;
+          case 'd': // Right
+            handleMove(0, -1, 0);
+            break;
+        }
+      }
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      // Stop movement when WASD keys are released
+      if (!isConnected || event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      if (['w', 'a', 's', 'd'].includes(key)) {
+        event.preventDefault();
+        handleStop();
+      }
+    };
+
+    // Add event listeners
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('keyup', handleKeyUp);
+
+    // Cleanup
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [isConnected, handleMove, handleStop]);
 
   const handleMapClick = (x: number, y: number, theta?: number) => {
     const timestamp = new Date().toISOString();
@@ -316,10 +416,10 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
       </Typography>
 
       <Grid container spacing={3}>
-        
+        <Grid container spacing={2}>
         {/* Main Map Display */}
         <Grid item xs={12} md={9}>
-          <Paper sx={{ p: 2, height: '700px' }}>
+          <Paper ref={mainRef} sx={{ p: 2 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
               <Tooltip title="Force Refresh Map Data">
                 <IconButton
@@ -338,12 +438,149 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
               showLidar={showLidar}
               isSettingInitialPose={positionMode === 'send_to_ros'}
             />
+
+            {/* Embedded Robot Control - Bottom Right Corner */}
+            <Paper
+              sx={{
+                position: 'absolute',
+                bottom: 16,
+                right: 16,
+                p: 2,
+                backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                backdropFilter: 'blur(4px)',
+                border: '1px solid rgba(0, 0, 0, 0.1)',
+                borderRadius: 2,
+                minWidth: 200
+              }}
+            >
+              <Typography variant="subtitle2" gutterBottom sx={{ textAlign: 'center', fontWeight: 'bold' }}>
+                🎮 Robot Control (WASD)
+              </Typography>
+
+              {/* Visual WASD Layout - Non-interactive */}
+              <Grid container spacing={0.5} sx={{ mb: 1 }}>
+                <Grid item xs={4}></Grid>
+                <Grid item xs={4}>
+                  <IconButton
+                    disabled={!isConnected}
+                    color={isMoving ? "secondary" : "primary"}
+                    size="small"
+                    sx={{
+                      width: '100%',
+                      aspectRatio: '1',
+                      border: '1px solid #ccc',
+                      borderRadius: 1,
+                      fontSize: '10px',
+                      '&:disabled': { opacity: 0.5 }
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <ArrowUpward fontSize="small" />
+                      <Typography variant="caption" sx={{ fontSize: '8px' }}>W</Typography>
+                    </Box>
+                  </IconButton>
+                </Grid>
+                <Grid item xs={4}></Grid>
+
+                <Grid item xs={4}>
+                  <IconButton
+                    disabled={!isConnected}
+                    color={isMoving ? "secondary" : "primary"}
+                    size="small"
+                    sx={{
+                      width: '100%',
+                      aspectRatio: '1',
+                      border: '1px solid #ccc',
+                      borderRadius: 1,
+                      fontSize: '10px',
+                      '&:disabled': { opacity: 0.5 }
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <ArrowBack fontSize="small" />
+                      <Typography variant="caption" sx={{ fontSize: '8px' }}>A</Typography>
+                    </Box>
+                  </IconButton>
+                </Grid>
+                <Grid item xs={4}>
+                  <IconButton
+                    onClick={handleStop}
+                    disabled={!isConnected}
+                    color="error"
+                    size="small"
+                    sx={{
+                      width: '100%',
+                      aspectRatio: '1',
+                      border: '1px solid #ccc',
+                      borderRadius: 1,
+                      fontSize: '10px',
+                      '&:disabled': { opacity: 0.5 }
+                    }}
+                  >
+                    <Stop fontSize="small" />
+                  </IconButton>
+                </Grid>
+                <Grid item xs={4}>
+                  <IconButton
+                    disabled={!isConnected}
+                    color={isMoving ? "secondary" : "primary"}
+                    size="small"
+                    sx={{
+                      width: '100%',
+                      aspectRatio: '1',
+                      border: '1px solid #ccc',
+                      borderRadius: 1,
+                      fontSize: '10px',
+                      '&:disabled': { opacity: 0.5 }
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <ArrowForward fontSize="small" />
+                      <Typography variant="caption" sx={{ fontSize: '8px' }}>D</Typography>
+                    </Box>
+                  </IconButton>
+                </Grid>
+
+                <Grid item xs={4}></Grid>
+                <Grid item xs={4}>
+                  <IconButton
+                    disabled={!isConnected}
+                    color={isMoving ? "secondary" : "primary"}
+                    size="small"
+                    sx={{
+                      width: '100%',
+                      aspectRatio: '1',
+                      border: '1px solid #ccc',
+                      borderRadius: 1,
+                      fontSize: '10px',
+                      '&:disabled': { opacity: 0.5 }
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <ArrowDownward fontSize="small" />
+                      <Typography variant="caption" sx={{ fontSize: '8px' }}>S</Typography>
+                    </Box>
+                  </IconButton>
+                </Grid>
+                <Grid item xs={4}></Grid>
+              </Grid>
+
+              <Typography variant="caption" sx={{
+                display: 'block',
+                textAlign: 'center',
+                color: isConnected ? 'text.secondary' : 'error.main',
+                fontSize: '10px'
+              }}>
+                {isConnected ? 'Press WASD keys to move' : 'Not connected'}
+              </Typography>
+            </Paper>
           </Paper>
+          </Grid>
         </Grid>
 
         {/* Map Controls */}
         <Grid item xs={12} md={3}>
-          <Paper sx={{ p: 3, height: '700px', overflow: 'auto' }}>
+          <Paper sx={{ p: 3, overflow: 'auto' ,height: mainHeight }}>
             <Typography variant="h6" gutterBottom>
               🎛️ Map Controls
             </Typography>
@@ -623,24 +860,22 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
                 </Typography>
                 <ul>
                   <li><strong>Click:</strong> Set navigation goal</li>
-                  <li><strong>Drag:</strong> Pan the map view</li>
-                  <li><strong>Scroll:</strong> Zoom in/out</li>
-                  <li><strong>Zoom Controls:</strong> Use buttons in top-right</li>
-                  <li><strong>Center Button:</strong> Reset view to robot</li>
+                  <li><strong>WASD Keys:</strong> Move robot directly</li>
+                  <li><strong>Control Panel:</strong> Visual WASD in bottom-right</li>
                   <li><strong>Fullscreen:</strong> Open in fullscreen mode</li>
                 </ul>
               </Grid>
               <Grid item xs={12} md={4}>
                 <Typography variant="subtitle2" gutterBottom>
-                  ⚠️ Navigation Tips:
+                  ⚠️ Control Tips:
                 </Typography>
                 <ul>
-                  <li>Click on free (white) areas only</li>
-                  <li>Avoid clicking near obstacles</li>
-                  <li>Monitor robot progress after setting goal</li>
-                  <li>Use emergency stop if needed</li>
-                  <li>Cancel goal before setting new one</li>
-                  <li>Check LiDAR data for real-time obstacles</li>
+                  <li><strong>WASD:</strong> W=Forward, S=Back, A=Left, D=Right</li>
+                  <li><strong>Stop Button:</strong> Click red stop or release keys</li>
+                  <li><strong>Navigation:</strong> Click on free (white) areas</li>
+                  <li><strong>Manual Control:</strong> Use WASD for precise positioning</li>
+                  <li><strong>Map Building:</strong> Move robot to explore areas</li>
+                  <li>Monitor robot progress and avoid obstacles</li>
                 </ul>
               </Grid>
             </Grid>
