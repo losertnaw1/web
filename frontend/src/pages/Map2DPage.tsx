@@ -7,6 +7,7 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import {
   Refresh as RefreshIcon,
+  Save as SaveIcon,
   ArrowUpward,
   ArrowDownward,
   ArrowBack,
@@ -43,7 +44,7 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
 
   // Robot control states
   const [linearSpeed, setLinearSpeed] = useState(0.2);
-  const [angularSpeed, setAngularSpeed] = useState(0.5);
+  const [angularSpeed, setAngularSpeed] = useState(0.2);
   const [isMoving, setIsMoving] = useState(false);
 
   // UI states
@@ -55,7 +56,7 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
   const [mainHeight, setMainHeight] = useState("auto");
 
   // Control collapse button
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
 
   useEffect(() => {
     if (mainRef.current) {
@@ -122,6 +123,38 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
       setSnackbar({
         open: true,
         message: `Error fetching map: ${error.message}`,
+        severity: 'error'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  //Save the current map
+  const handleSaveMap = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(getApiUrl('/api/map/save'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'test' })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setSnackbar({
+          open: true,
+          message: `Map saved successfully!`,
+          severity: 'success'
+        });
+      } else {
+        throw new Error('Failed to save map');
+      }
+    }
+    catch (error) {
+      setSnackbar({
+        open: true,
+        message: `Failed to save map: ${error.message}`,
         severity: 'error'
       });
     } finally {
@@ -416,26 +449,37 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom>
-        🗺️ 2D Map View
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h4" gutterBottom>
+          🗺️ 2D Map View
+        </Typography>
 
+        <Box>
+          <Tooltip title="Force refresh map data">
+            <IconButton
+              onClick={() => fetchMapData(true)}
+              disabled={loading}
+              color="primary"
+            >
+              <RefreshIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Save the current map">
+            <IconButton
+              onClick={() => handleSaveMap()}
+              disabled={loading}
+              color="primary"
+            >
+              <SaveIcon />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      </Box>
       <Grid container spacing={3}>
         <Grid item xs={12} md={9} mt={0}>
         {/* Main Map Display */}
         <Grid>
           <Paper ref={mainRef} sx={{ p: 2 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Tooltip title="Force Refresh Map Data">
-                <IconButton
-                  onClick={() => fetchMapData(true)}
-                  disabled={loading}
-                  color="primary"
-                >
-                  <RefreshIcon />
-                </IconButton>
-              </Tooltip>
-            </Box>
             <MapViewer
               robotData={robotData}
               sensorData={sensorData}
@@ -451,7 +495,7 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
                 bottom: 16,
                 right: 16,
                 p: 2,
-                backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                background: 'none',
                 backdropFilter: 'blur(4px)',
                 border: '1px solid rgba(0, 0, 0, 0.1)',
                 borderRadius: 2,

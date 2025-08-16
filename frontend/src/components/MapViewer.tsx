@@ -108,7 +108,7 @@ const MapViewer: React.FC<MapViewerProps> = ({ robotData, sensorData, onMapClick
         </Box>
 
         {/* Map Container */}
-        <Box sx={{ flex: 1, height: '100%' }}>
+        <Box sx={{ flex: 1, height: '100%', display: 'flex', justifyContent: 'center' }}>
           <MapViewer2D
             mapData={mapData}
             robotPose={robotPose}
