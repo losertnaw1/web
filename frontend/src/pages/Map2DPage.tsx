@@ -456,22 +456,26 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
 
         <Box>
           <Tooltip title="Force refresh map data">
-            <IconButton
-              onClick={() => fetchMapData(true)}
-              disabled={loading}
-              color="primary"
-            >
-              <RefreshIcon />
-            </IconButton>
+            <span style={{ display: 'inline-block' }}>
+              <IconButton
+                onClick={() => fetchMapData(true)}
+                disabled={loading}
+                color="primary"
+              >
+                <RefreshIcon />
+              </IconButton>
+            </span>
           </Tooltip>
           <Tooltip title="Save the current map">
-            <IconButton
-              onClick={() => handleSaveMap()}
-              disabled={loading}
-              color="primary"
-            >
-              <SaveIcon />
-            </IconButton>
+            <span style={{ display: 'inline-block' }}>
+              <IconButton
+                onClick={() => handleSaveMap()}
+                disabled={loading}
+                color="primary"
+              >
+                <SaveIcon />
+              </IconButton>
+            </span>
           </Tooltip>
         </Box>
       </Box>
