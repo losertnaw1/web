@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Dict, Any
 
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -793,3 +793,35 @@ async def refresh_map():
     except Exception as e:
         logger.error(f"🗺️ [API] Error refreshing map: {e}")
         raise HTTPException(status_code=500, detail=f"Map refresh failed: {str(e)}")
+
+
+@app.post("/api/map/save")
+async def save_map(request: Request):
+    """Save current map to file using ROS map_saver"""
+    logger.info("🗺️ [API] Map save requested")
+
+    ros_bridge = get_ros_bridge()
+    if not ros_bridge:
+        logger.warning("🗺️ [API] ROS bridge not available for save")
+        raise HTTPException(status_code=503, detail="ROS bridge not available")
+
+    try:
+        body = await request.json()
+        name = body.get("name") if isinstance(body, dict) else None
+        if not name:
+            name = datetime.now().strftime("map_%Y%m%d_%H%M%S")
+
+        save_dir = Path("data/ros1_maps")
+        save_dir.mkdir(parents=True, exist_ok=True)
+        file_path = save_dir / name
+
+        result = ros_bridge.save_map(str(file_path))
+        logger.info(f"🗺️ [API] Map saved at {file_path}")
+        return {
+            "status": "success",
+            "message": "Map saved successfully",
+            "files": result
+        }
+    except Exception as e:
+        logger.error(f"🗺️ [API] Error saving map: {e}")
+        raise HTTPException(status_code=500, detail=f"Map save failed: {str(e)}")

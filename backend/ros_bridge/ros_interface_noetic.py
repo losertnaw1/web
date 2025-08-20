@@ -10,8 +10,11 @@ import rospy
 import threading
 import json
 import time
+import subprocess
+import os
 from threading import Lock
 from typing import Dict, Any, Optional, Callable
+from pathlib import Path
 
 # ROS1 message imports
 from std_msgs.msg import String, Header
@@ -421,7 +424,34 @@ class ROS1WebBridge:
         except Exception as e:
             rospy.logerr(f"🗺️ [ROS Bridge] Error refreshing map subscription: {e}")
             raise
-    
+
+    def save_map(self, file_path: str) -> Dict[str, str]:
+        """Save current map using ROS map_saver"""
+        try:
+            # Ensure directory exists
+            path = Path(file_path)
+            if path.parent:
+                path.parent.mkdir(parents=True, exist_ok=True)
+
+            subprocess.run(
+                ['rosrun', 'map_server', 'map_saver', '-f', str(path)],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+            rospy.loginfo(f"Map saved to {path}")
+            return {
+                'yaml': f"{path}.yaml",
+                'pgm': f"{path}.pgm"
+            }
+        except subprocess.CalledProcessError as e:
+            err = e.stderr.decode() if e.stderr else str(e)
+            rospy.logerr(f"Map save command failed: {err}")
+            raise
+        except Exception as e:
+            rospy.logerr(f"Failed to save map: {e}")
+            raise
+
     def publish_cmd_vel(self, linear_x: float, linear_y: float, angular_z: float):
         """Publish velocity command"""
         msg = Twist()
