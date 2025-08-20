@@ -296,37 +296,43 @@ const NodesPage: React.FC<NodesPageProps> = ({ isConnected, onCommand, systemDat
                   <Box sx={{ display: 'flex', gap: 1 }}>
                     {node.status === 'stopped' || node.status === 'error' ? (
                       <Tooltip title="Start Node">
-                        <IconButton
-                          size="small"
-                          onClick={() => handleNodeAction(node.name, 'start')}
-                          disabled={loading || !isConnected}
-                          color="success"
-                        >
-                          <PlayArrow />
-                        </IconButton>
+                        <span style={{ display: 'inline-block' }}>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleNodeAction(node.name, 'start')}
+                            disabled={loading || !isConnected}
+                            color="success"
+                          >
+                            <PlayArrow />
+                          </IconButton>
+                        </span>
                       </Tooltip>
                     ) : (
                       <Tooltip title="Stop Node">
-                        <IconButton
-                          size="small"
-                          onClick={() => handleNodeAction(node.name, 'stop')}
-                          disabled={loading || !isConnected}
-                          color="error"
-                        >
-                          <Stop />
-                        </IconButton>
+                        <span style={{ display: 'inline-block' }}>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleNodeAction(node.name, 'stop')}
+                            disabled={loading || !isConnected}
+                            color="error"
+                          >
+                            <Stop />
+                          </IconButton>
+                        </span>
                       </Tooltip>
                     )}
-                    
+
                     <Tooltip title="Restart Node">
-                      <IconButton
-                        size="small"
-                        onClick={() => handleNodeAction(node.name, 'restart')}
-                        disabled={loading || !isConnected}
-                        color="warning"
-                      >
-                        <Refresh />
-                      </IconButton>
+                      <span style={{ display: 'inline-block' }}>
+                        <IconButton
+                          size="small"
+                          onClick={() => handleNodeAction(node.name, 'restart')}
+                          disabled={loading || !isConnected}
+                          color="warning"
+                        >
+                          <Refresh />
+                        </IconButton>
+                      </span>
                     </Tooltip>
                   </Box>
                 </TableCell>
