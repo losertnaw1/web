@@ -207,7 +207,7 @@ async def handle_websocket_message(websocket: WebSocket, message: Dict[str, Any]
     try:
         message_type = message.get('type', '')
         
-        if message_type == 'robot_command':
+        if message_type == 'command':
             await handle_robot_command(message)
         elif message_type == 'get_status':
             await send_robot_status(websocket)
