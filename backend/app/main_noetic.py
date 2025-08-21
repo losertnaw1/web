@@ -811,7 +811,7 @@ async def save_map(request: Request):
         if not name:
             name = datetime.now().strftime("map_%Y%m%d_%H%M%S")
 
-        save_dir = Path("data/ros1_maps")
+        save_dir = Path("amr_master/maps")
         save_dir.mkdir(parents=True, exist_ok=True)
         file_path = save_dir / name
 

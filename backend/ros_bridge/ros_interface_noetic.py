@@ -141,7 +141,7 @@ class ROS1WebBridge:
         
         # Velocity commands
         self.cmd_vel_pub = rospy.Publisher(
-            '/cmd_vel',
+            '/output_vel',
             Twist,
             queue_size=10
         )

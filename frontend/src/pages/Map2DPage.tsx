@@ -44,7 +44,7 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
 
   // Robot control states
   const [linearSpeed, setLinearSpeed] = useState(0.2);
-  const [angularSpeed, setAngularSpeed] = useState(0.2);
+  const [angularSpeed, setAngularSpeed] = useState(0.1);
   const [isMoving, setIsMoving] = useState(false);
 
   // UI states
@@ -137,7 +137,7 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
       const response = await fetch(getApiUrl('/api/map/save'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'test' })
+        body: JSON.stringify({ name: 'ros_noetic_map_pnc' })
       });
 
       if (response.ok) {
@@ -202,7 +202,7 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
       angular_z: angular_z * angularSpeed
     };
 
-    logInfo(`WASD movement command`, 'Map2D-Control', moveParams);
+    //logInfo(`WASD movement command`, 'Map2D-Control', moveParams);
     onCommand('move', moveParams);
     setIsMoving(linear_x !== 0 || linear_y !== 0 || angular_z !== 0);
   }, [isConnected, linearSpeed, angularSpeed, onCommand]);
@@ -215,57 +215,105 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
 
   // Keyboard event handling for WASD controls
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      // Only handle WASD keys when connected and not typing in input fields
-      if (!isConnected || event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
-        return;
-      }
+  // Object để theo dõi trạng thái phím
+  const keyState: { [key: string]: boolean } = {
+    w: false,
+    a: false,
+    s: false,
+    d: false,
+  };
 
-      // Prevent default behavior for WASD keys
-      const key = event.key.toLowerCase();
-      if (['w', 'a', 's', 'd'].includes(key)) {
-        event.preventDefault();
+  let moveInterval: NodeJS.Timeout | null = null;
+  const MOVE_DELAY = 1000;
 
-        switch (key) {
-          case 'w': // Forward
-            handleMove(1, 0, 0);
-            break;
-          case 's': // Backward
-            handleMove(-1, 0, 0);
-            break;
-          case 'a': // Left
-            handleMove(0, 1, 0);
-            break;
-          case 'd': // Right
-            handleMove(0, -1, 0);
-            break;
+  const getVelocity = () => {
+    let vx = 0;
+    let vy = 0;
+    let vz = 0;
+
+    if (keyState.w) vx += 1;
+    if (keyState.a) vz += 1;
+    if (keyState.s) vx -= 1;
+    if (keyState.d) vz -= 1;
+
+    return {vx,vy,vz};
+  }
+
+  const performMove = () => {
+    const {vx,vy,vz} = getVelocity();
+
+    if (vx !== 0 || vy !== 0 || vz !== 0) {
+        handleMove(vx,vy,vz);
+    }
+  }
+
+  const isAnyKeyPressed = () => {
+    return Object.values(keyState).some((pressed) => pressed);
+  };
+
+  const handleKeyDown = (event: KeyboardEvent) => {
+    // Chỉ xử lý khi kết nối và không nhập trong input/textarea
+    if (
+      !isConnected ||
+      event.target instanceof HTMLInputElement ||
+      event.target instanceof HTMLTextAreaElement
+    ) {
+      return;
+    }
+
+    const key = event.key.toLowerCase();
+    // Chỉ xử lý các phím WASD
+    if (['w', 'a', 's', 'd'].includes(key)) {
+      event.preventDefault();
+
+      // Chỉ xử lý nếu phím chưa được nhấn trước đó
+      if (!keyState[key]) {
+        keyState[key] = true; // Đánh dấu phím đang được nhấn
+
+        performMove();
+
+        if (!moveInterval) {
+          moveInterval = setInterval(() => {
+            performMove();
+          }, MOVE_DELAY);
         }
       }
-    };
+    }
+  };
 
-    const handleKeyUp = (event: KeyboardEvent) => {
-      // Stop movement when WASD keys are released
-      if (!isConnected || event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
-        return;
-      }
+  const handleKeyUp = (event: KeyboardEvent) => {
+    // Chỉ xử lý khi kết nối và không nhập trong input/textarea
+    if (
+      !isConnected ||
+      event.target instanceof HTMLInputElement ||
+      event.target instanceof HTMLTextAreaElement
+    ) {
+      return;
+    }
 
-      const key = event.key.toLowerCase();
-      if (['w', 'a', 's', 'd'].includes(key)) {
-        event.preventDefault();
+    const key = event.key.toLowerCase();
+    // Chỉ xử lý các phím WASD
+    if (['w', 'a', 's', 'd'].includes(key)) {
+      event.preventDefault();
+
+      // Chỉ xử lý nếu phím đang được nhấn (trạng thái true)
+      if (keyState[key]) {
+        keyState[key] = false; // Đánh dấu phím đã được thả
         handleStop();
       }
-    };
+    }
+  };
 
-    // Add event listeners
-    document.addEventListener('keydown', handleKeyDown);
-    document.addEventListener('keyup', handleKeyUp);
+  // Thêm event listeners
+  document.addEventListener('keydown', handleKeyDown);
+  document.addEventListener('keyup', handleKeyUp);
 
-    // Cleanup
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-      document.removeEventListener('keyup', handleKeyUp);
-    };
-  }, [isConnected, handleMove, handleStop]);
+  // Cleanup
+  return () => {
+    document.removeEventListener('keydown', handleKeyDown);
+    document.removeEventListener('keyup', handleKeyUp);
+  };
+}, [isConnected, handleMove, handleStop]);
 
   const handleMapClick = (x: number, y: number, theta?: number) => {
     const timestamp = new Date().toISOString();
