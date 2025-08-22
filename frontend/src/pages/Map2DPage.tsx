@@ -58,6 +58,12 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
   // Control collapse button
   const [collapsed, setCollapsed] = useState(true);
 
+  const eulerToQuaternion = (theta: number) => {
+    const cy = Math.cos(theta * 0.5);
+    const sy = Math.sin(theta * 0.5);
+    return { w: cy, x: 0, y: 0, z: sy };
+  };
+
   useEffect(() => {
     if (mainRef.current) {
       setMainHeight(mainRef.current.clientHeight + "px");
@@ -137,7 +143,7 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
       const response = await fetch(getApiUrl('/api/map/save'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'ros_noetic_map_pnc' })
+        body: JSON.stringify({ name: 'pnc' })
       });
 
       if (response.ok) {
@@ -319,15 +325,20 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
     const timestamp = new Date().toISOString();
     logInfo(`${timestamp} - Map clicked at (${x.toFixed(2)}, ${y.toFixed(2)})${theta !== undefined ? `, theta: ${theta.toFixed(3)}` : ''}`, 'Map2D');
 
+    if (theta === undefined) {
+      logWarn('Map click received without theta. First click of a 2-step process.', 'Map2D');
+      return; // Bỏ qua cú click đầu tiên, chỉ xử lý khi đã có hướng
+    }
+
+    // Dựa vào state `positionMode` hiện tại để quyết định hành động
     if (positionMode === 'send_to_ros') {
-      // Send initial pose with direction
-      const finalTheta = theta !== undefined ? theta : 0.0;
-      logInfo(`Sending initial pose to (${x.toFixed(2)}, ${y.toFixed(2)}, ${finalTheta.toFixed(3)})`, 'Map2D');
-      handleSetInitialPose(x, y, finalTheta);
-    } else {
-      // Send navigate command
-      logInfo(`Sending navigate command with params:`, 'Map2D', { x, y, orientation_w: 1.0 });
-      handleNavigateToGoal(x, y);
+      // Gửi Initial Pose
+      logInfo(`Sending initial pose...`, 'Map2D');
+      handleSetInitialPose(x, y, theta);
+    } else { // positionMode === 'receive_from_ros'
+      // Gửi Navigation Goal
+      logInfo(`Sending navigation goal...${theta}`, 'Map2D');
+      handleNavigateToGoal(x, y, theta);
     }
   };
 
@@ -363,22 +374,26 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
     }
   };
 
-  const handleNavigateToGoal = async (x: number, y: number, orientation_w: number = 1.0) => {
+  const handleNavigateToGoal = async (x: number, y: number, theta?: number) => {
     try {
       setLoading(true);
-      logInfo(`Sending navigation goal to (${x.toFixed(2)}, ${y.toFixed(2)})`, 'Map2D');
+      // Tạo orientation. Nếu không có theta, mặc định là không xoay.
+      const orientation = theta !== undefined 
+        ? eulerToQuaternion(theta)
+        : { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
+      logInfo(`Sending navigation goal to (${x.toFixed(2)}, ${y.toFixed(2)}, ${theta})`, 'Map2D');
 
       const response = await fetch(getApiUrl('/api/navigation/navigate'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ x, y, orientation_w })
+        body: JSON.stringify({ x, y, orientation })
       });
 
       if (response.ok) {
         const result = await response.json();
         setSnackbar({
           open: true,
-          message: `🎯 Navigation goal set to (${x.toFixed(2)}, ${y.toFixed(2)})`,
+          message: `🎯 Navigation goal set to (${x.toFixed(2)}, ${y.toFixed(2)}, {${orientation.x.toFixed(2)}, ${orientation.y.toFixed(2)}, ${orientation.z.toFixed(2)}, ${orientation.w.toFixed(2)}})`,
           severity: 'success'
         });
         logInfo(`✅ Navigation goal sent successfully to (${x.toFixed(2)}, ${y.toFixed(2)})`, 'Map2D');
@@ -841,7 +856,7 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
                 <Button
                   variant="outlined"
                   size="small"
-                  onClick={() => handleMapClick(0, 0)}
+                  onClick={() => handleNavigateToGoal(0, 0)}
                   disabled={!isConnected}
                 >
                   🏠 Go Home (0, 0)
@@ -849,7 +864,7 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
                 <Button
                   variant="outlined"
                   size="small"
-                  onClick={() => handleMapClick(2, 2)}
+                  onClick={() => handleNavigateToGoal(2, 2)}
                   disabled={!isConnected}
                 >
                   📍 Point A (2, 2)
@@ -857,7 +872,7 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
                 <Button
                   variant="outlined"
                   size="small"
-                  onClick={() => handleMapClick(-2, 2)}
+                  onClick={() => handleNavigateToGoal(-2, 2)}
                   disabled={!isConnected}
                 >
                   📍 Point B (-2, 2)
@@ -865,7 +880,7 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
                 <Button
                   variant="outlined"
                   size="small"
-                  onClick={() => handleMapClick(0, -2)}
+                  onClick={() => handleNavigateToGoal(0, -2)}
                   disabled={!isConnected}
                 >
                   📍 Point C (0, -2)

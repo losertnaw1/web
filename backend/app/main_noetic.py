@@ -12,7 +12,7 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
@@ -567,25 +567,42 @@ async def navigate_to_goal(request: dict):
     """Send navigation goal to robot"""
     x = request.get("x")
     y = request.get("y")
-    orientation_w = request.get("orientation_w", 1.0)
+    orientation: Optional[Dict[str, float]] = request.get("orientation")
 
     if x is None or y is None:
         raise HTTPException(status_code=400, detail="x and y coordinates are required")
+
+    if orientation is None:
+        # Tạo một quaternion mặc định (không xoay)
+        orientation_data = {"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0}
+        logger.warning(f"⚠️ [API] No orientation provided. Defaulting to no rotation (w=1.0).")
+    else:
+        # Kiểm tra các trường cần thiết trong object orientation
+        if not all(k in orientation for k in ["x", "y", "z", "w"]):
+            raise HTTPException(
+                status_code=400, 
+                detail="Orientation object must contain 'x', 'y', 'z', and 'w' keys."
+            )
+        orientation_data = orientation
 
     ros_bridge = get_ros_bridge()
     if not ros_bridge:
         raise HTTPException(status_code=503, detail="ROS bridge not available")
 
-    logger.info(f"🎯 [API] Navigation goal requested: ({x}, {y}) with orientation_w={orientation_w}")
+    logger.info(f"🎯 [API] Navigation goal requested: ({x}, {y}), Orientation={orientation_data}")
 
     try:
-        ros_bridge.publish_navigation_goal(float(x), float(y), float(orientation_w))
+        ros_bridge.publish_navigation_goal_with_pose(
+            float(x), 
+            float(y), 
+            orientation_data
+        )
         logger.info(f"✅ [API] Navigation goal published successfully")
 
         return {
             "status": "success",
             "message": f"Navigation goal set to ({x}, {y})",
-            "goal": {"x": x, "y": y, "orientation_w": orientation_w}
+            "goal": {"x": x, "y": y, "Orientation": orientation_data}
         }
     except Exception as e:
         logger.error(f"❌ [API] Error publishing navigation goal: {str(e)}")

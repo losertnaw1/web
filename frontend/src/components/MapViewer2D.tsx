@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Box, Paper, Typography, Snackbar, Alert } from '@mui/material';
+import { logWarn } from '../utils/backendLogger';
 
 interface MapViewer2DProps {
   mapData?: {
@@ -42,7 +43,7 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
   goals = [],
   path = [],
   onMapClick,
-  isSettingInitialPose = false
+  isSettingInitialPose = false,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [errorMessage, setErrorMessage] = useState<string>('');
@@ -65,46 +66,6 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
   } else {
     console.log('❌ No map data received!');
   }
-
-
-
-  // Filter map data to reduce noise
-  const filterMapData = (data: number[], width: number, height: number): number[] => {
-    if (!data || data.length === 0) return data;
-
-    const filtered = [...data];
-
-    // Apply median filter to reduce noise
-    for (let y = 1; y < height - 1; y++) {
-      for (let x = 1; x < width - 1; x++) {
-        const idx = y * width + x;
-
-        // Get 3x3 neighborhood
-        const neighbors = [
-          data[(y-1) * width + (x-1)], data[(y-1) * width + x], data[(y-1) * width + (x+1)],
-          data[y * width + (x-1)],     data[y * width + x],     data[y * width + (x+1)],
-          data[(y+1) * width + (x-1)], data[(y+1) * width + x], data[(y+1) * width + (x+1)]
-        ];
-
-        // Only filter non-obstacle areas to preserve walls
-        if (data[idx] !== 100) {
-          // Remove isolated pixels
-          const occupiedCount = neighbors.filter(val => val === 100).length;
-          const freeCount = neighbors.filter(val => val === 0).length;
-          const unknownCount = neighbors.filter(val => val === -1).length;
-
-          // If current pixel is very different from neighbors, smooth it
-          if (data[idx] === 100 && occupiedCount <= 2) {
-            filtered[idx] = freeCount > unknownCount ? 0 : -1;
-          } else if (data[idx] === 0 && freeCount <= 2) {
-            filtered[idx] = occupiedCount > unknownCount ? 100 : -1;
-          }
-        }
-      }
-    }
-
-    return filtered;
-  };
 
   // Convert world coordinates to canvas coordinates - SIMPLIFIED
   const worldToCanvas = (worldX: number, worldY: number) => {
@@ -158,6 +119,8 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
 
   // Draw the map
   useEffect(() => {
+    const OCCUPIED_THRESHOLD = 65;
+    const FREE_THRESHOLD = 25;
     const canvas = canvasRef.current;
     if (!canvas || !mapData) return;
 
@@ -170,9 +133,6 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Apply noise filtering to map data
-    const filteredData = filterMapData(mapData.data, mapData.width, mapData.height);
-
     // Draw occupancy grid with filtered data
     const imageData = ctx.createImageData(mapData.width, mapData.height);
 
@@ -182,19 +142,19 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
     for (let y = 0; y < mapData.height; y++) {
       for (let x = 0; x < mapData.width; x++) {
         const dataIndex = y * mapData.width + x;
-        const value = filteredData[dataIndex];
+        const value = mapData.data[dataIndex];
 
         // Flip Y-axis: canvas Y = height - 1 - data Y
         const canvasY = mapData.height - 1 - y;
         const pixelIndex = (canvasY * mapData.width + x) * 4;
 
-        if (value === -1) {
+        if (value === OCCUPIED_THRESHOLD) {
           // Unknown space - light gray
           imageData.data[pixelIndex] = 200;     // R
           imageData.data[pixelIndex + 1] = 200; // G
           imageData.data[pixelIndex + 2] = 200; // B
           imageData.data[pixelIndex + 3] = 255; // A
-        } else if (value === 0) {
+        } else if (value >= 0 && value < FREE_THRESHOLD) {
           // Free space - white
           imageData.data[pixelIndex] = 255;     // R
           imageData.data[pixelIndex + 1] = 255; // G
@@ -397,12 +357,18 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
     }
 
     // Draw pending initial pose position and direction selection
-    if (pendingPosition && isSettingInitialPose) {
+    if (pendingPosition) {
       const pos = worldToCanvas(pendingPosition.x, pendingPosition.y);
 
+      const isInitial = isSettingInitialPose;
+      const markerColor = isInitial ? '#ff8c00' : '#2196f3'; // Orange for pose, Blue for goal
+      const borderColor = isInitial ? '#ff4500' : '#0d47a1';
+      const labelText = isInitial ? 'Click to set direction' : 'Click to set goal direction';
+
+
       // Pending position marker (pulsing orange circle)
-      ctx.fillStyle = '#ff8c00'; // Orange
-      ctx.strokeStyle = '#ff4500'; // Red-orange border
+      ctx.fillStyle = markerColor; // Orange
+      ctx.strokeStyle = borderColor; // Red-orange border
       ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, 8, 0, 2 * Math.PI);
@@ -410,7 +376,7 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
       ctx.stroke();
 
       // Pulsing effect (inner circle)
-      ctx.fillStyle = 'rgba(255, 140, 0, 0.5)';
+      ctx.fillStyle = `${markerColor}80`;
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, 12, 0, 2 * Math.PI);
       ctx.fill();
@@ -420,7 +386,7 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
       ctx.fillRect(pos.x + 15, pos.y - 30, 120, 20);
       ctx.fillStyle = '#000';
       ctx.font = 'bold 11px Arial';
-      ctx.fillText('Click to set direction', pos.x + 17, pos.y - 15);
+      ctx.fillText(labelText, pos.x + 17, pos.y - 15);
     }
 
   }, [mapData, robotPose, lidarData, goals, path, canvasWidth, canvasHeight, mapScale]);
@@ -516,7 +482,7 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
     // Validate goal position
     const validation = isValidGoalPosition(worldPos.x, worldPos.y);
 
-    console.log(`🎯 Map clicked at canvas: (${canvasX.toFixed(1)}, ${canvasY.toFixed(1)}) -> world: (${worldPos.x.toFixed(2)}, ${worldPos.y.toFixed(2)})`);
+    logWarn(`🎯 Map clicked at canvas: (${canvasX.toFixed(1)}, ${canvasY.toFixed(1)}) -> world: (${worldPos.x.toFixed(2)}, ${worldPos.y.toFixed(2)})`, 'MapViewer2D');
 
     if (!validation.valid) {
       console.warn(`❌ Invalid goal position: ${validation.reason}`);
@@ -525,36 +491,32 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
     }
 
     // Handle two-step initial pose setting (position + direction)
-    if (isSettingInitialPose) {
-      if (!isSelectingDirection) {
-        // First click: set position, start direction selection
-        setPendingPosition({ x: worldPos.x, y: worldPos.y });
-        setIsSelectingDirection(true);
-        console.log(`📍 Initial pose position set to (${worldPos.x.toFixed(2)}, ${worldPos.y.toFixed(2)}). Click again to set direction.`);
-        return;
-      } else {
-        // Second click: calculate direction and complete pose setting
-        if (pendingPosition) {
-          const dx = worldPos.x - pendingPosition.x;
-          const dy = worldPos.y - pendingPosition.y;
-          const theta = Math.atan2(dy, dx);
+    if (!isSelectingDirection) {
+      // First click: set position, start direction selection
+      setPendingPosition({ x: worldPos.x, y: worldPos.y });
+      setIsSelectingDirection(true);
+      const mode = isSettingInitialPose ? 'Initial Pose' : 'Nav Goal';
+      console.log(`📍 ${mode} position set to (${worldPos.x.toFixed(2)}, ${worldPos.y.toFixed(2)}). Click again to set direction.`);
+      return;
+    } else {
+      // Second click: calculate direction and complete pose setting
+      if (pendingPosition) {
+        const dx = worldPos.x - pendingPosition.x;
+        const dy = worldPos.y - pendingPosition.y;
+        const theta = Math.atan2(dy, dx);
 
-          console.log(`🧭 Direction set: (${dx.toFixed(2)}, ${dy.toFixed(2)}) -> ${(theta * 180 / Math.PI).toFixed(1)}°`);
-          console.log(`✅ Complete initial pose: (${pendingPosition.x.toFixed(2)}, ${pendingPosition.y.toFixed(2)}, ${theta.toFixed(3)})`);
+        const mode = isSettingInitialPose ? 'Initial Pose' : 'Nav Goal';
+        console.log(`🧭 Direction set for ${mode}: ${(theta * 180 / Math.PI).toFixed(1)}°`);
+        console.log(`✅ Complete ${mode}: (${pendingPosition.x.toFixed(2)}, ${pendingPosition.y.toFixed(2)}, ${theta.toFixed(3)})`);
 
-          onMapClick(pendingPosition.x, pendingPosition.y, theta);
+        onMapClick(pendingPosition.x, pendingPosition.y, theta);
 
-          // Reset state
-          setPendingPosition(null);
-          setIsSelectingDirection(false);
-        }
-        return;
+        // Reset state
+        setPendingPosition(null);
+        setIsSelectingDirection(false);
       }
+      return;
     }
-
-    // Normal navigation goal setting
-    console.log(`✅ Valid goal position - sending to navigation`);
-    onMapClick(worldPos.x, worldPos.y);
   };
 
 

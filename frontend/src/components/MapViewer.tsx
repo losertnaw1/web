@@ -11,9 +11,10 @@ interface MapViewerProps {
   onMapClick: (x: number, y: number, theta?: number) => void;
   showLidar?: boolean;
   isSettingInitialPose?: boolean;
+  isSettingNavGoal?: boolean;
 }
 
-const MapViewer: React.FC<MapViewerProps> = ({ robotData, sensorData, onMapClick, showLidar = false, isSettingInitialPose = false }) => {
+const MapViewer: React.FC<MapViewerProps> = ({ robotData, sensorData, onMapClick, showLidar = false, isSettingInitialPose = false, isSettingNavGoal = true }) => {
   const [fullscreenOpen, setFullscreenOpen] = useState(false);
 
   // Use real map data from ROS2 or fallback to simple map

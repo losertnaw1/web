@@ -464,23 +464,46 @@ class ROS1WebBridge:
     
     def publish_navigation_goal(self, x: float, y: float, orientation_w: float = 1.0):
         """Publish navigation goal"""
-        rospy.loginfo(f'Publishing navigation goal: ({x}, {y}) with orientation_w={orientation_w}')
+        rospy.logwarn("Legacy 'publish_navigation_goal' called. Consider switching to 'publish_navigation_goal_with_pose'.")
+        
+        # Tạo dictionary orientation từ giá trị w duy nhất
+        orientation_dict = {
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0,
+            "w": orientation_w
+        }
+        self.publish_navigation_goal_with_pose(x, y, orientation_dict)
+        rospy.loginfo(f'Navigation goal published successfully')
+    
+    def publish_navigation_goal_with_pose(self, x: float, y: float, orientation_dict: Dict[str, float]):
+        """
+        Publish navigation goal with a full pose (position + orientation).
+        This is the new primary function for sending goals.
+        """
+        if not all(k in orientation_dict for k in ['x', 'y', 'z', 'w']):
+            rospy.logerr(f"Invalid orientation dictionary provided: {orientation_dict}")
+            return
+
+        rospy.loginfo(f'Publishing navigation goal: Pos=({x}, {y}), Orient={orientation_dict}')
         
         msg = PoseStamped()
         msg.header.frame_id = 'map'
         msg.header.stamp = rospy.Time.now()
         
+        # Set position
         msg.pose.position.x = float(x)
         msg.pose.position.y = float(y)
         msg.pose.position.z = 0.0
         
-        msg.pose.orientation.x = 0.0
-        msg.pose.orientation.y = 0.0
-        msg.pose.orientation.z = 0.0
-        msg.pose.orientation.w = float(orientation_w)
+        # Set orientation from the dictionary
+        msg.pose.orientation.x = float(orientation_dict['x'])
+        msg.pose.orientation.y = float(orientation_dict['y'])
+        msg.pose.orientation.z = float(orientation_dict['z'])
+        msg.pose.orientation.w = float(orientation_dict['w'])
         
         self.goal_pub.publish(msg)
-        rospy.loginfo(f'Navigation goal published successfully')
+        rospy.loginfo(f'Navigation goal with full pose published successfully')
     
     def publish_initial_pose(self, x: float, y: float, theta: float):
         """Publish initial pose for AMCL"""
