@@ -148,7 +148,7 @@ class ROS1WebBridge:
         
         # Navigation goals
         self.goal_pub = rospy.Publisher(
-            '/move_base/current_goal',
+            '/move_base_simple/goal',
             PoseStamped,
             queue_size=10
         )
@@ -429,7 +429,7 @@ class ROS1WebBridge:
         """Save current map using ROS map_saver"""
         try:
             # Ensure directory exists
-            path = Path(file_path)
+            path = Path(file_path).resolve()
             if path.parent:
                 path.parent.mkdir(parents=True, exist_ok=True)
 
