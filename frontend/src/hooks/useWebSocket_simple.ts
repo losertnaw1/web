@@ -225,11 +225,9 @@ export const useWebSocket = (url: string): UseWebSocketReturn => {
               // Robot data
               switch (data_type) {
                 case 'pose':
-                  console.log('🤖 [WebSocket] Received pose data:', data);
                   setRobotData(prev => ({ ...prev, pose: data }));
                   break;
                 case 'odom':
-                  console.log('🚗 [WebSocket] Received odom data:', data);
                   setRobotData(prev => ({ ...prev, odom: data }));
                   break;
                 case 'battery':
@@ -246,7 +244,7 @@ export const useWebSocket = (url: string): UseWebSocketReturn => {
                   setSensorData(prev => ({ ...prev, ultrasonic: data }));
                   break;
                 case 'map':
-                  console.log('🗺️ [WS] Received map data:', data);
+                  console.log('🗺️ [WS] Received map data:', data.timestamp);
                   setSensorData(prev => ({ ...prev, map: data }));
                   break;
               }

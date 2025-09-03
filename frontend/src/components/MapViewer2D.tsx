@@ -255,9 +255,6 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
       );
     }
 
-    // Draw path, goals, LiDAR, robot, and pending position - NO CHANGE
-    // (All the drawing logic from lines 200-400 remains the same, just using updated worldToCanvas function)
-
     // Draw path
     if (path.length > 1) {
       ctx.strokeStyle = '#2196f3';

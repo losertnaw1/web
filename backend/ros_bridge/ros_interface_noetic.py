@@ -148,7 +148,7 @@ class ROS1WebBridge:
         
         # Navigation goals
         self.goal_pub = rospy.Publisher(
-            '/move_base_simple/goal',
+            '/move_base/current_goal',
             PoseStamped,
             queue_size=10
         )
@@ -341,8 +341,8 @@ class ROS1WebBridge:
             }
             
             self.latest_data['map'] = map_data
-            rospy.loginfo("MAP DATA STORED in latest_data")
             self._trigger_websocket_callback('map', map_data)
+            rospy.loginfo("MAP DATA STORED in latest_data")
     
     def diagnostics_callback(self, msg):
         """Handle diagnostics updates"""
