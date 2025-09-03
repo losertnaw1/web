@@ -34,6 +34,8 @@ interface MapViewer2DProps {
   }>;
   onMapClick?: (x: number, y: number, theta?: number) => void;
   isSettingInitialPose?: boolean;
+  multiGoalMode?: boolean;
+  onGoalsChange?: (goals: Array<{x:number; y:number; theta:number}>) => void;
 }
 
 const MapViewer2D: React.FC<MapViewer2DProps> = ({
@@ -44,6 +46,8 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
   path = [],
   onMapClick,
   isSettingInitialPose = false,
+  multiGoalMode = false,
+  onGoalsChange,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [errorMessage, setErrorMessage] = useState<string>('');
@@ -85,8 +89,8 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
     const mapY = (worldY - mapData.origin.y) / mapData.resolution;
 
     // Convert to canvas coordinates with centering, scaling, and pan offset
-    const centerOffsetX = (canvasWidth - mapData.width * baseMapScale) / 2;
-    const centerOffsetY = (canvasHeight - mapData.height * baseMapScale) / 2;
+    const centerOffsetX = (canvasWidth - mapData.width * mapScale) / 2;
+    const centerOffsetY = (canvasHeight - mapData.height * mapScale) / 2;
 
     const canvasX = (mapX * mapScale) + centerOffsetX + panOffset.x;
     const canvasY = ((mapData.height - 1 - mapY) * mapScale) + centerOffsetY + panOffset.y;
@@ -99,8 +103,8 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
     if (!mapData) return { x: 0, y: 0 };
 
     // Remove centering offset and pan offset
-    const centerOffsetX = (canvasWidth - mapData.width * baseMapScale) / 2;
-    const centerOffsetY = (canvasHeight - mapData.height * baseMapScale) / 2;
+    const centerOffsetX = (canvasWidth - mapData.width * mapScale) / 2;
+    const centerOffsetY = (canvasHeight - mapData.height * mapScale) / 2;
 
     const mapX = (canvasX - centerOffsetX - panOffset.x) / mapScale;
     const mapY = (canvasY - centerOffsetY - panOffset.y) / mapScale;
@@ -129,11 +133,36 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
   // ADDED: Handle mouse drag for panning
   const [isDragging, setIsDragging] = useState(false);
   const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 });
+  const [isSettingGoalAngle, setIsSettingGoalAngle] = useState(false);
 
   const handleMouseDown = (event: React.MouseEvent) => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect || !mapData || !canvasRef.current) return;
+
     if (event.button === 0) { // Left mouse button
-      setIsDragging(true);
-      setLastMousePos({ x: event.clientX, y: event.clientY });
+      if (multiGoalMode) {
+        const canvasX = event.clientX - rect.left;
+        const canvasY = event.clientY - rect.top;
+        const worldPos = canvasToWorld(canvasX, canvasY);
+
+        // Update previous goal's theta to point to new goal
+        if (goals.length > 0 && onGoalsChange) {
+          const prev = goals[goals.length - 1];
+          const thetaPrev = Math.atan2(worldPos.y - prev.y, worldPos.x - prev.x);
+          const updatedPrev = goals.slice(0, -1).concat([{ ...prev, theta: thetaPrev }]);
+          onGoalsChange(updatedPrev);
+        }
+
+        // Add new goal
+        if (onGoalsChange) {
+          const newList = (goals.length > 0 ? goals.slice(0) : []).concat([{ x: worldPos.x, y: worldPos.y, theta: 0 }]);
+          onGoalsChange(newList);
+        }
+        setIsSettingGoalAngle(true);
+      } else {
+        setIsDragging(true);
+        setLastMousePos({ x: event.clientX, y: event.clientY });
+      }
     }
   };
 
@@ -159,6 +188,13 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
       const currentY = event.clientY - rect.top;
 
       const worldPos = canvasToWorld(currentX, currentY);
+      // Live update last goal's theta while dragging in multi-goal mode
+      if (multiGoalMode && isSettingGoalAngle && onGoalsChange && goals.length > 0) {
+        const last = goals[goals.length - 1];
+        const theta = Math.atan2(worldPos.y - last.y, worldPos.x - last.x);
+        const updated = goals.slice(0, -1).concat([{ ...last, theta }]);
+        onGoalsChange(updated);
+      }
       const validation = isValidGoalPosition(worldPos.x, worldPos.y);
 
       canvasRef.current.style.cursor = validation.valid ? 'crosshair' : 'not-allowed';
@@ -172,10 +208,15 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
         canvasRef.current.style.cursor = 'default';
       }
     }
+    if (isSettingGoalAngle) {
+      setIsSettingGoalAngle(false);
+    }
   };
 
   // MODIFIED: Handle mouse click with drag detection
   const handleMouseClick = (event: React.MouseEvent) => {
+    // In multi-goal mode, creation is handled on mousedown; ignore click
+    if (multiGoalMode) return;
     // Only process click if not dragging
     if (!isDragging) {
       handleMapClick(event);
@@ -243,8 +284,8 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
     if (tempCtx) {
       tempCtx.putImageData(imageData, 0, 0);
       
-      const centerOffsetX = (canvasWidth - mapData.width * baseMapScale) / 2;
-      const centerOffsetY = (canvasHeight - mapData.height * baseMapScale) / 2;
+      const centerOffsetX = (canvasWidth - mapData.width * mapScale) / 2;
+      const centerOffsetY = (canvasHeight - mapData.height * mapScale) / 2;
 
       ctx.drawImage(
         tempCanvas,
@@ -257,19 +298,47 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
 
     // Draw path
     if (path.length > 1) {
+      ctx.save();
       ctx.strokeStyle = '#2196f3';
       ctx.lineWidth = 2;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
       ctx.beginPath();
-      
+
       const firstPoint = worldToCanvas(path[0].x, path[0].y);
       ctx.moveTo(firstPoint.x, firstPoint.y);
-      
+
       for (let i = 1; i < path.length; i++) {
         const point = worldToCanvas(path[i].x, path[i].y);
         ctx.lineTo(point.x, point.y);
       }
-      
+
       ctx.stroke();
+
+      // Optional: draw small dots at waypoints for visibility/debug
+      ctx.fillStyle = '#1976d2';
+      for (let i = 0; i < path.length; i++) {
+        const p = worldToCanvas(path[i].x, path[i].y);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // Preview a straight line from robot to pending goal while selecting
+    if (path.length <= 1 && pendingPosition && robotPose) {
+      const a = worldToCanvas(robotPose.x, robotPose.y);
+      const b = worldToCanvas(pendingPosition.x, pendingPosition.y);
+      ctx.save();
+      ctx.setLineDash([6, 6]);
+      ctx.strokeStyle = '#2196f399';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+      ctx.restore();
     }
 
     // Draw goals

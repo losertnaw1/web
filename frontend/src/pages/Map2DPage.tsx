@@ -36,6 +36,9 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
   const [showPath, setShowPath] = useState(true);
   const [showGoals, setShowGoals] = useState(true);
   const [autoCenter, setAutoCenter] = useState(true);
+  const [multiGoalMode, setMultiGoalMode] = useState(false);
+  const [multiGoals, setMultiGoals] = useState<Array<{x:number; y:number; theta:number}>>([]);
+  const [isRunningMultiGoals, setIsRunningMultiGoals] = useState(false);
 
   // Switch states
   const [mapSource, setMapSource] = useState<'static_map' | 'dynamic_map'>('static_map');
@@ -342,6 +345,27 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
     }
   };
 
+  // Multi-goal helpers
+  const clearMultiGoals = useCallback(() => setMultiGoals([]), []);
+
+  const runMultiGoals = useCallback(async () => {
+    if (!multiGoalMode || multiGoals.length === 0 || isRunningMultiGoals) return;
+    setIsRunningMultiGoals(true);
+    try {
+      for (let i = 0; i < multiGoals.length; i++) {
+        const g = multiGoals[i];
+        await handleNavigateToGoal(g.x, g.y, g.theta);
+        // Small delay to avoid hammering backend; in real impl wait for feedback
+        await new Promise(res => setTimeout(res, 500));
+      }
+      setSnackbar({ open: true, message: `✅ Sent ${multiGoals.length} goals`, severity: 'success' });
+    } catch (err: any) {
+      setSnackbar({ open: true, message: `❌ Failed sending goals: ${err.message || err}`, severity: 'error' });
+    } finally {
+      setIsRunningMultiGoals(false);
+    }
+  }, [multiGoalMode, multiGoals, isRunningMultiGoals]);
+
   const handleSetInitialPose = async (x: number, y: number, theta: number = 0.0) => {
     try {
       setLoading(true);
@@ -553,6 +577,9 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
               onMapClick={handleMapClick}
               showLidar={showLidar}
               isSettingInitialPose={positionMode === 'send_to_ros'}
+              multiGoalMode={multiGoalMode}
+              multiGoals={multiGoals}
+              onMultiGoalsChange={setMultiGoals}
             />
 
             {/* Embedded Robot Control - Bottom Right Corner */}
@@ -794,6 +821,39 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
                     ? 'Robot follows predefined paths'
                     : 'Autonomous navigation with SLAM'}
                 </Typography>
+              </CardContent>
+            </Card>
+
+            {/* Multi-Goal Mode Switch */}
+            <Card sx={{ mb: 2, opacity: positionMode === 'send_to_ros' ? 0.6 : 1 }}>
+              <CardContent>
+                <Typography variant="subtitle1" gutterBottom>
+                  📌 Multi-Goal Mode (Cycle)
+                </Typography>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={multiGoalMode}
+                      onChange={(e) => setMultiGoalMode(e.target.checked)}
+                      disabled={loading || positionMode === 'send_to_ros'}
+                    />
+                  }
+                  label={multiGoalMode ? 'Multiple Goals' : 'Single Goal'}
+                />
+                <Typography variant="caption" display="block" color="text.secondary">
+                  {positionMode === 'send_to_ros' ? 'Disabled while setting initial pose' : (multiGoalMode ? 'Pick multiple goals; drag to set direction' : 'Pick a single goal')}
+                </Typography>
+                {multiGoalMode && (
+                  <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                    <Typography variant="caption">Selected: {multiGoals.length}</Typography>
+                    <Button size="small" variant="contained" onClick={runMultiGoals} disabled={!multiGoals.length || isRunningMultiGoals}>
+                      Run
+                    </Button>
+                    <Button size="small" variant="outlined" onClick={clearMultiGoals} disabled={!multiGoals.length || isRunningMultiGoals}>
+                      Clear
+                    </Button>
+                  </Box>
+                )}
               </CardContent>
             </Card>
 

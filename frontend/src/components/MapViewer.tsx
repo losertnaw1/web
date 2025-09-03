@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Box, Typography, Button, Dialog, DialogTitle, DialogContent, IconButton } from '@mui/material';
 import { Fullscreen, Close } from '@mui/icons-material';
 import { RobotData, SensorData } from '../hooks/useWebSocket_simple';
@@ -12,10 +12,15 @@ interface MapViewerProps {
   showLidar?: boolean;
   isSettingInitialPose?: boolean;
   isSettingNavGoal?: boolean;
+  multiGoalMode?: boolean;
+  multiGoals?: Array<{x:number; y:number; theta:number}>;
+  onMultiGoalsChange?: (goals: Array<{x:number; y:number; theta:number}>) => void;
 }
 
-const MapViewer: React.FC<MapViewerProps> = ({ robotData, sensorData, onMapClick, showLidar = false, isSettingInitialPose = false, isSettingNavGoal = true }) => {
+const MapViewer: React.FC<MapViewerProps> = ({ robotData, sensorData, onMapClick, showLidar = false, isSettingInitialPose = false, isSettingNavGoal = true, multiGoalMode = false, multiGoals = [], onMultiGoalsChange }) => {
   const [fullscreenOpen, setFullscreenOpen] = useState(false);
+  const [goals, setGoals] = useState<Array<{x: number; y: number; theta: number}>>([]);
+  const [displayPath, setDisplayPath] = useState<Array<{x: number; y: number}>>([]);
 
   // Use real map data from ROS2 or fallback to simple map
   const mapData = sensorData.map ? {
@@ -79,16 +84,37 @@ const MapViewer: React.FC<MapViewerProps> = ({ robotData, sensorData, onMapClick
     return undefined;
   })();
 
-  // Mock goals and path for demonstration
-  const goals = [
-    { x: 1.0, y: 1.0, theta: 0 }
-  ];
+  // Local handler for single-goal mode
+  const handleMapClickLocal = useCallback((x: number, y: number, theta?: number) => {
+    if (multiGoalMode) return; // handled by multi-goal interactions
+    onMapClick(x, y, theta);
+    if (theta !== undefined) {
+      setGoals([{ x, y, theta }]);
+    }
+  }, [onMapClick, multiGoalMode]);
 
-  const path = [
-    { x: 0, y: 0 },
-    { x: 0.5, y: 0.5 },
-    { x: 1.0, y: 1.0 }
-  ];
+  // Recompute display path: single vs multi
+  useEffect(() => {
+    if (!robotPose) {
+      setDisplayPath([]);
+      return;
+    }
+    if (multiGoalMode) {
+      const pts = [
+        { x: robotPose.x, y: robotPose.y },
+        ...multiGoals.map(g => ({ x: g.x, y: g.y }))
+      ];
+      setDisplayPath(pts.length > 1 ? pts : []);
+    } else if (goals.length > 0) {
+      const g = goals[0];
+      setDisplayPath([
+        { x: robotPose.x, y: robotPose.y },
+        { x: g.x, y: g.y }
+      ]);
+    } else {
+      setDisplayPath([]);
+    }
+  }, [robotPose, goals, multiGoalMode, multiGoals]);
 
   return (
     <>
@@ -114,10 +140,12 @@ const MapViewer: React.FC<MapViewerProps> = ({ robotData, sensorData, onMapClick
             mapData={mapData}
             robotPose={robotPose}
             lidarData={showLidar ? sensorData.scan : undefined}
-            goals={goals}
-            path={path}
-            onMapClick={onMapClick}
+            goals={multiGoalMode ? multiGoals : goals}
+            path={displayPath}
+            onMapClick={handleMapClickLocal}
             isSettingInitialPose={isSettingInitialPose}
+            multiGoalMode={multiGoalMode}
+            onGoalsChange={onMultiGoalsChange}
           />
         </Box>
 
@@ -160,10 +188,12 @@ const MapViewer: React.FC<MapViewerProps> = ({ robotData, sensorData, onMapClick
             mapData={mapData}
             robotPose={robotPose}
             lidarData={showLidar ? sensorData.scan : undefined}
-            goals={goals}
-            path={path}
-            onMapClick={onMapClick}
+            goals={multiGoalMode ? multiGoals : goals}
+            path={displayPath}
+            onMapClick={handleMapClickLocal}
             isSettingInitialPose={isSettingInitialPose}
+            multiGoalMode={multiGoalMode}
+            onGoalsChange={onMultiGoalsChange}
           />
         </DialogContent>
       </Dialog>
