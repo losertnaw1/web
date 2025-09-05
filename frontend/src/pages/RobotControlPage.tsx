@@ -6,6 +6,7 @@ import VirtualJoystick from '../components/VirtualJoystick';
 import ContinuousJoystick from '../components/ContinuousJoystick';
 import { safeDistance, safeToFixed, safeVelocity, safeAngularVelocity, safeVoltage, safePercentage } from '../utils/numberUtils';
 import { logInfo, logWarn, logError } from '../utils/backendLogger';
+import { useI18n } from '../i18n/i18n';
 
 interface RobotControlPageProps {
   robotData: RobotData;
@@ -20,6 +21,7 @@ const RobotControlPage: React.FC<RobotControlPageProps> = ({
   isConnected,
   onCommand
 }) => {
+  const { t } = useI18n();
   const [controlMode, setControlMode] = useState(0); // 0: Buttons, 1: Joystick, 2: Advanced Joystick
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
@@ -43,20 +45,20 @@ const RobotControlPage: React.FC<RobotControlPageProps> = ({
         if (linear_x !== 0 || linear_y !== 0 || angular_z !== 0) {
           setSnackbar({
             open: true,
-            message: `🎮 Moving: linear=(${linear_x.toFixed(2)}, ${linear_y.toFixed(2)}), angular=${angular_z.toFixed(2)}`,
+            message: t('rc.snack.moving', '🎮 Moving') + `: linear=(${linear_x.toFixed(2)}, ${linear_y.toFixed(2)}), angular=${angular_z.toFixed(2)}`,
             severity: 'info'
           });
         }
       } else if (command === 'stop') {
         setSnackbar({
           open: true,
-          message: '⏹️ Robot stopped',
+          message: t('rc.snack.stopped', '⏹️ Robot stopped'),
           severity: 'success'
         });
       } else if (command === 'navigate') {
         setSnackbar({
           open: true,
-          message: '🏠 Returning home...',
+          message: t('rc.snack.returning_home', '🏠 Returning home...'),
           severity: 'info'
         });
       }
@@ -91,18 +93,18 @@ const RobotControlPage: React.FC<RobotControlPageProps> = ({
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h4" gutterBottom>
-        🎮 Robot Control
+        🎮 {t('rc.title', 'Robot Control')}
       </Typography>
       <Typography variant="subtitle1" color="text.secondary" gutterBottom>
-        Manual control and movement commands
+        {t('rc.subtitle', 'Manual control and movement commands')}
       </Typography>
 
       {/* Control Mode Tabs */}
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
         <Tabs value={controlMode} onChange={(_, newValue) => setControlMode(newValue)}>
-          <Tab label="🔘 Button Control" />
-          <Tab label="🎮 Basic Joystick" />
-          <Tab label="🚀 Advanced Joystick" />
+          <Tab label={t('rc.mode.buttons', '🔘 Button Control')} />
+          <Tab label={t('rc.mode.basic', '🎮 Basic Joystick')} />
+          <Tab label={t('rc.mode.advanced', '🚀 Advanced Joystick')} />
         </Tabs>
       </Box>
 
@@ -112,8 +114,8 @@ const RobotControlPage: React.FC<RobotControlPageProps> = ({
         <Grid item xs={12} md={6}>
           <Paper sx={{ p: 3 }}>
             <Typography variant="h6" gutterBottom>
-              {controlMode === 0 ? '🔘 Button Control' :
-               controlMode === 1 ? '🎮 Basic Joystick' : '🚀 Advanced Joystick'}
+              {controlMode === 0 ? t('rc.mode.buttons', '🔘 Button Control') :
+               controlMode === 1 ? t('rc.mode.basic', '🎮 Basic Joystick') : t('rc.mode.advanced', '🚀 Advanced Joystick')}
             </Typography>
 
             {controlMode === 0 ? (
@@ -152,13 +154,13 @@ const RobotControlPage: React.FC<RobotControlPageProps> = ({
         <Grid item xs={12} md={6}>
           <Paper sx={{ p: 3 }}>
             <Typography variant="h6" gutterBottom>
-              Robot Status
+              {t('rc.robot_status', 'Robot Status')}
             </Typography>
             
             {/* Position */}
             <Box sx={{ mb: 3 }}>
               <Typography variant="subtitle2" gutterBottom>
-                📍 Position
+                📍 {t('rc.position', 'Position')}
               </Typography>
               <Typography variant="body1">
                 X: {safeDistance(robotData.odom?.position?.x)}
@@ -174,7 +176,7 @@ const RobotControlPage: React.FC<RobotControlPageProps> = ({
             {/* Orientation */}
             <Box sx={{ mb: 3 }}>
               <Typography variant="subtitle2" gutterBottom>
-                🧭 Orientation
+                🧭 {t('rc.orientation', 'Orientation')}
               </Typography>
               <Typography variant="body1">
                 X: {safeToFixed(robotData.odom?.orientation?.x, 3)}
@@ -193,7 +195,7 @@ const RobotControlPage: React.FC<RobotControlPageProps> = ({
             {/* Velocity */}
             <Box sx={{ mb: 3 }}>
               <Typography variant="subtitle2" gutterBottom>
-                🏃 Velocity
+                🏃 {t('rc.velocity', 'Velocity')}
               </Typography>
               <Typography variant="body1">
                 Linear X: {safeVelocity(robotData.odom?.linear_velocity?.x)}
@@ -209,23 +211,23 @@ const RobotControlPage: React.FC<RobotControlPageProps> = ({
             {/* Battery */}
             <Box sx={{ mb: 3 }}>
               <Typography variant="subtitle2" gutterBottom>
-                🔋 Battery
+                🔋 {t('rc.battery', 'Battery')}
               </Typography>
               <Typography variant="body1">
-                Level: {safePercentage(robotData.battery?.percentage)}
+                {t('rc.level', 'Level')}: {safePercentage(robotData.battery?.percentage)}
               </Typography>
               <Typography variant="body1">
-                Voltage: {safeVoltage(robotData.battery?.voltage)}
+                {t('rc.voltage', 'Voltage')}: {safeVoltage(robotData.battery?.voltage)}
               </Typography>
             </Box>
 
             {/* Sensors */}
             <Box sx={{ mb: 3 }}>
               <Typography variant="subtitle2" gutterBottom>
-                📡 Sensors
+                📡 {t('rc.sensors', 'Sensors')}
               </Typography>
               <Typography variant="body1">
-                LiDAR Points: {sensorData.scan?.ranges?.filter(r => r !== null && r !== undefined).length || 0}
+                {t('rc.lidar_points', 'LiDAR Points')}: {sensorData.scan?.ranges?.filter(r => r !== null && r !== undefined).length || 0}
               </Typography>
               <Typography variant="body1">
                 Ultrasonic: {Array.isArray(sensorData.ultrasonic) ?
@@ -240,7 +242,7 @@ const RobotControlPage: React.FC<RobotControlPageProps> = ({
         <Grid item xs={12}>
           <Paper sx={{ p: 3, backgroundColor: '#ffebee' }}>
             <Typography variant="h6" gutterBottom color="error">
-              🚨 Emergency Controls
+              🚨 {t('rc.emergency', 'Emergency Controls')}
             </Typography>
             <Grid container spacing={2}>
               <Grid item>
@@ -257,7 +259,7 @@ const RobotControlPage: React.FC<RobotControlPageProps> = ({
                     fontWeight: 'bold'
                   }}
                 >
-                  🛑 EMERGENCY STOP
+                  {t('rc.emergency_stop', '🛑 EMERGENCY STOP')}
                 </button>
               </Grid>
               <Grid item>
@@ -273,7 +275,7 @@ const RobotControlPage: React.FC<RobotControlPageProps> = ({
                     fontSize: '18px'
                   }}
                 >
-                  ⏹️ Stop Movement
+                  {t('rc.stop_movement', '⏹️ Stop Movement')}
                 </button>
               </Grid>
               <Grid item>
@@ -289,7 +291,7 @@ const RobotControlPage: React.FC<RobotControlPageProps> = ({
                     fontSize: '18px'
                   }}
                 >
-                  🏠 Return Home
+                  {t('rc.return_home', '🏠 Return Home')}
                 </button>
               </Grid>
             </Grid>
@@ -300,29 +302,29 @@ const RobotControlPage: React.FC<RobotControlPageProps> = ({
         <Grid item xs={12}>
           <Paper sx={{ p: 3 }}>
             <Typography variant="h6" gutterBottom>
-              📖 Control Instructions
+              📖 {t('rc.instructions', 'Control Instructions')}
             </Typography>
             <Grid container spacing={2}>
               <Grid item xs={12} md={6}>
                 <Typography variant="subtitle2" gutterBottom>
-                  🎮 Manual Control:
+                  🎮 {t('rc.manual_control', 'Manual Control:')}
                 </Typography>
                 <ul>
-                  <li>Use arrow buttons for movement</li>
-                  <li>Adjust speed with sliders</li>
-                  <li>Emergency stop always available</li>
-                  <li>Real-time feedback on robot status</li>
+                  <li>{t('rc.tip.use_buttons', 'Use arrow buttons for movement')}</li>
+                  <li>{t('rc.tip.adjust_speed', 'Adjust speed with sliders')}</li>
+                  <li>{t('rc.tip.emergency_stop', 'Emergency stop always available')}</li>
+                  <li>{t('rc.tip.realtime_feedback', 'Real-time feedback on robot status')}</li>
                 </ul>
               </Grid>
               <Grid item xs={12} md={6}>
                 <Typography variant="subtitle2" gutterBottom>
-                  ⚠️ Safety Notes:
+                  ⚠️ {t('rc.safety_notes', 'Safety Notes:')}
                 </Typography>
                 <ul>
-                  <li>Always monitor robot surroundings</li>
-                  <li>Use emergency stop if needed</li>
-                  <li>Check battery level regularly</li>
-                  <li>Ensure clear path before movement</li>
+                  <li>{t('rc.tip.monitor', 'Always monitor robot surroundings')}</li>
+                  <li>{t('rc.tip.use_emg', 'Use emergency stop if needed')}</li>
+                  <li>{t('rc.tip.check_battery', 'Check battery level regularly')}</li>
+                  <li>{t('rc.tip.clear_path', 'Ensure clear path before movement')}</li>
                 </ul>
               </Grid>
             </Grid>

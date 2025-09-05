@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Box, Paper, Typography, Snackbar, Alert } from '@mui/material';
 import { logWarn } from '../utils/backendLogger';
+import { useI18n } from '../i18n/i18n';
 
 interface MapViewer2DProps {
   mapData?: {
@@ -16,12 +17,15 @@ interface MapViewer2DProps {
     theta: number;
   };
   lidarData?: {
-    ranges: number[];
+    // Match ROS LaserScan semantics and WS hook shape
+    ranges: Array<number | null>;
     angle_min: number;
     angle_max: number;
     angle_increment: number;
     range_min: number;
     range_max: number;
+    timestamp?: number;
+    frame_id?: string;
   };
   goals?: Array<{
     x: number;
@@ -49,6 +53,7 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
   multiGoalMode = false,
   onGoalsChange,
 }) => {
+  const { t } = useI18n();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [pendingPosition, setPendingPosition] = useState<{x: number, y: number} | null>(null);
@@ -369,63 +374,40 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
     const LIDAR_OFFSET_Y = 0.0; // Ví dụ: LiDAR không lệch trái/phải
     const LIDAR_OFFSET_THETA = 0.0; // Ví dụ: LiDAR không xoay so với robot
 
-    // Draw LiDAR points (lines 240-295 remain the same)
+    // Draw LiDAR points similar to RViz filtering
     if (lidarData && robotPose) {
-      ctx.fillStyle = '#FFF';
+      // Single consistent style
+      ctx.fillStyle = '#00ff00';
 
-      for (let i = 0; i < lidarData.ranges.length; i += 1) {
-        const range = lidarData.ranges[i];
-        if (range && range > lidarData.range_min && range < lidarData.range_max && range < 10.0) {
-          const angle = lidarData.angle_min + i * lidarData.angle_increment;
+      const { ranges, angle_min, angle_increment, range_min, range_max } = lidarData;
 
-          // 1. Vị trí điểm laser trong hệ quy chiếu của chính nó (laser_frame)
-          const pointInLidarFrame = {
-              x: range * Math.cos(angle),
-              y: range * Math.sin(angle),
-          };
+      for (let i = 0; i < ranges.length; i++) {
+        const r = ranges[i];
+        // Ignore invalid like RViz: null/NaN/inf/out-of-range
+        if (r == null || !isFinite(r) || r < range_min || r > range_max) continue;
 
-          // 2. Biến đổi điểm này sang hệ quy chiếu của tâm robot (base_link)
-          //    Bao gồm cả xoay và dịch chuyển của cảm biến so với tâm robot
-          const pointInBaseLinkFrame = {
-              x: LIDAR_OFFSET_X + pointInLidarFrame.x * Math.cos(LIDAR_OFFSET_THETA) - pointInLidarFrame.y * Math.sin(LIDAR_OFFSET_THETA),
-              y: LIDAR_OFFSET_Y + pointInLidarFrame.x * Math.sin(LIDAR_OFFSET_THETA) + pointInLidarFrame.y * Math.cos(LIDAR_OFFSET_THETA),
-          };
-          
-          // 3. Biến đổi điểm từ base_link sang hệ quy chiếu của bản đồ (map)
-          //    Đây là bước bạn đã làm, nhưng giờ với điểm đã được căn chỉnh
-          const lidarX = robotPose.x + pointInBaseLinkFrame.x * Math.cos(robotPose.theta) - pointInBaseLinkFrame.y * Math.sin(robotPose.theta);
-          const lidarY = robotPose.y + pointInBaseLinkFrame.x * Math.sin(robotPose.theta) + pointInBaseLinkFrame.y * Math.cos(robotPose.theta);
+        const angle = angle_min + i * angle_increment;
 
-          const lidarPos = worldToCanvas(lidarX, lidarY);
+        // Point in lidar frame
+        const x_l = r * Math.cos(angle);
+        const y_l = r * Math.sin(angle);
 
-          ctx.beginPath();
-          ctx.arc(lidarPos.x, lidarPos.y, 2, 0, 2 * Math.PI);
-          ctx.fill();
+        // Transform lidar->base_link (apply sensor yaw offset + translation)
+        const cosL = Math.cos(LIDAR_OFFSET_THETA);
+        const sinL = Math.sin(LIDAR_OFFSET_THETA);
+        const x_b = LIDAR_OFFSET_X + x_l * cosL - y_l * sinL;
+        const y_b = LIDAR_OFFSET_Y + x_l * sinL + y_l * cosL;
 
-          ctx.fillStyle = '#00ff00';
+        // Transform base_link->map using robot pose (standard 2D SE(2))
+        const cosR = Math.cos(robotPose.theta);
+        const sinR = Math.sin(robotPose.theta);
+        const x_m = robotPose.x + x_b * cosR - y_b * sinR;
+        const y_m = robotPose.y + x_b * sinR + y_b * cosR;
 
-          // if (i % 20 === 0) {
-          //   ctx.fillStyle = '#ff0000';
-          //   const pos1 = worldToCanvas(lidarX1, lidarY1);
-          //   ctx.beginPath();
-          //   ctx.arc(pos1.x, pos1.y, 1, 0, 2 * Math.PI);
-          //   ctx.fill();
-
-          //   ctx.fillStyle = '#0000ff';
-          //   const pos3 = worldToCanvas(lidarX3, lidarY3);
-          //   ctx.beginPath();
-          //   ctx.arc(pos3.x, pos3.y, 1, 0, 2 * Math.PI);
-          //   ctx.fill();
-
-          //   ctx.fillStyle = '#ffff00';
-          //   const pos4 = worldToCanvas(lidarX4, lidarY4);
-          //   ctx.beginPath();
-          //   ctx.arc(pos4.x, pos4.y, 1, 0, 2 * Math.PI);
-          //   ctx.fill();
-
-          //   ctx.fillStyle = '#00ff00';
-          // }
-        }
+        const p = worldToCanvas(x_m, y_m);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 2, 0, 2 * Math.PI);
+        ctx.fill();
       }
     }
 
@@ -498,7 +480,7 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
       ctx.fillRect(pos.x + 20, pos.y - 25, 50, 20);
       ctx.fillStyle = '#000';
       ctx.font = 'bold 12px Arial';
-      ctx.fillText('ROBOT', pos.x + 22, pos.y - 10);
+      ctx.fillText(t('map.info.robot', 'ROBOT'), pos.x + 22, pos.y - 10);
     }
 
     // Draw pending position (lines 342-370 remain the same)
@@ -508,7 +490,7 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
       const isInitial = isSettingInitialPose;
       const markerColor = isInitial ? '#ff8c00' : '#2196f3';
       const borderColor = isInitial ? '#ff4500' : '#0d47a1';
-      const labelText = isInitial ? 'Click to set direction' : 'Click to set goal direction';
+      const labelText = isInitial ? t('map.instruction.initial', 'Click to set direction') : t('map.instruction.goal', 'Click to set goal direction');
 
       ctx.fillStyle = markerColor;
       ctx.strokeStyle = borderColor;
@@ -644,7 +626,7 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
     if (!isSelectingDirection) {
       setPendingPosition({ x: worldPos.x, y: worldPos.y });
       setIsSelectingDirection(true);
-      const mode = isSettingInitialPose ? 'Initial Pose' : 'Nav Goal';
+      const mode = isSettingInitialPose ? t('map2d.mode.initial', 'Initial Pose') : t('map2d.mode.nav_goal', 'Nav Goal');
       console.log(`📍 ${mode} position set to (${worldPos.x.toFixed(2)}, ${worldPos.y.toFixed(2)}). Click again to set direction.`);
       return;
     } else {
@@ -653,7 +635,7 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
         const dy = worldPos.y - pendingPosition.y;
         const theta = Math.atan2(dy, dx);
 
-        const mode = isSettingInitialPose ? 'Initial Pose' : 'Nav Goal';
+        const mode = isSettingInitialPose ? t('map2d.mode.initial', 'Initial Pose') : t('map2d.mode.nav_goal', 'Nav Goal');
         console.log(`🧭 Direction set for ${mode}: ${(theta * 180 / Math.PI).toFixed(1)}°`);
         console.log(`✅ Complete ${mode}: (${pendingPosition.x.toFixed(2)}, ${pendingPosition.y.toFixed(2)}, ${theta.toFixed(3)})`);
 
@@ -680,19 +662,19 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
     theta: robotPose.theta
   } : 'NO ROBOT');
 
-  // Force alert - NO CHANGE (lines 502-510)
-  if (mapData && !(window as any).debugAlertShown) {
-    const robotInfo = robotPose ? `Robot(${robotPose.x}, ${robotPose.y})` : 'NO ROBOT';
-    const mapInfo = `Map ${mapData.width}x${mapData.height}, res=${mapData.resolution}`;
-    alert(`DEBUG: ${mapInfo}, ${robotInfo}`);
-    (window as any).debugAlertShown = true;
-  }
+  // Debug alert (remain disabled by default). Enable if needed.
+  // if (mapData && !(window as any).debugAlertShown) {
+  //   const robotInfo = robotPose ? `${t('map.info.robot', 'Robot')}(${robotPose.x}, ${robotPose.y})` : 'NO ROBOT';
+  //   const mapInfo = `${t('map.info.size', 'Size')} ${mapData.width}x${mapData.height}, res=${mapData.resolution}`;
+  //   alert(`DEBUG: ${mapInfo}, ${robotInfo}`);
+  //   (window as any).debugAlertShown = true;
+  // }
 
   return (
     <Paper sx={{ position: 'relative', overflow: 'hidden', width: canvasWidth, height: canvasHeight }}>
       {/* MODIFIED: Debug info with zoom level */}
       <Box sx={{ position: 'absolute', top: 8, left: 8, zIndex: 2, bgcolor: 'yellow', p: 1 }}>
-        DEBUG: Map {mapData ? `${mapData.width}x${mapData.height}` : 'NO DATA'} | Zoom: {zoomLevel.toFixed(2)}x
+        {`DEBUG: ${t('map.info.size', 'Size')} ${mapData ? `${mapData.width}x${mapData.height}` : t('map.viewer.no_data.title')} | Zoom: ${zoomLevel.toFixed(2)}x`}
       </Box>
 
       {/* ADDED: Zoom controls */}
@@ -701,19 +683,19 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
           onClick={() => setZoomLevel(prev => Math.min(maxZoom, prev * 1.2))}
           style={{ padding: '4px 8px', fontSize: '14px', cursor: 'pointer' }}
         >
-          Zoom +
+          {t('map.viewer.zoom_in')}
         </button>
         <button 
           onClick={() => setZoomLevel(prev => Math.max(minZoom, prev / 1.2))}
           style={{ padding: '4px 8px', fontSize: '14px', cursor: 'pointer' }}
         >
-          Zoom -
+          {t('map.viewer.zoom_out')}
         </button>
         <button 
           onClick={resetView}
           style={{ padding: '4px 8px', fontSize: '12px', cursor: 'pointer' }}
         >
-          Reset
+          {t('map.viewer.reset')}
         </button>
       </Box>
 
@@ -731,7 +713,7 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
       }}>
         {robotPose && (
           <Typography variant="caption" display="block">
-            Robot: ({robotPose.x && robotPose.x.toFixed(2)}, {robotPose.y &&robotPose.y.toFixed(2)})
+            {t('map.info.robot', 'Robot')}: ({robotPose.x && robotPose.x.toFixed(2)}, {robotPose.y &&robotPose.y.toFixed(2)})
           </Typography>
         )}
       </Box>
@@ -763,9 +745,9 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
           textAlign: 'center',
           color: 'text.secondary'
         }}>
-          <Typography variant="h6">No Map Data</Typography>
+          <Typography variant="h6">{t('map.viewer.no_data.title')}</Typography>
           <Typography variant="body2">
-            Map will appear when available
+            {t('map.viewer.no_data.subtitle')}
           </Typography>
         </Box>
       )}

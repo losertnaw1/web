@@ -27,6 +27,7 @@ import {
   Edit,
   MenuBook
 } from '@mui/icons-material';
+import { useI18n } from '../i18n/i18n';
 
 interface SidebarProps {
   selectedPage: string;
@@ -38,9 +39,9 @@ interface SidebarProps {
 
 interface MenuItem {
   id: string;
-  label: string;
   icon: React.ReactElement;
-  description: string;
+  labelKey: string;
+  descKey: string;
   category: 'main' | 'monitoring' | 'tools' | 'system';
 }
 
@@ -48,16 +49,16 @@ const menuItems: MenuItem[] = [
   // Main Control
   {
     id: 'dashboard',
-    label: 'Dashboard',
+    labelKey: 'page.dashboard',
     icon: <Dashboard />,
-    description: 'Overview & Quick Controls',
+    descKey: 'sidebar.dashboard.desc',
     category: 'main'
   },
   {
     id: 'robot-control',
-    label: 'Robot Control',
+    labelKey: 'page.robot-control',
     icon: <SmartToy />,
-    description: 'Manual Movement & Commands',
+    descKey: 'sidebar.robot_control.desc',
     category: 'main'
   },
   // {
@@ -71,44 +72,44 @@ const menuItems: MenuItem[] = [
   // Monitoring
   {
     id: 'sensors',
-    label: 'Sensors',
+    labelKey: 'page.sensors',
     icon: <Sensors />,
-    description: 'LiDAR, Camera, IMU Data',
+    descKey: 'sidebar.sensors.desc',
     category: 'monitoring'
   },
   {
     id: 'map-2d',
-    label: '2D Map View',
+    labelKey: 'page.map-2d',
     icon: <Map />,
-    description: 'Traditional Map Visualization',
+    descKey: 'sidebar.map2d.desc',
     category: 'monitoring'
   },
   {
     id: 'map-3d',
-    label: '3D Visualization',
+    labelKey: 'page.map-3d',
     icon: <ViewInAr />,
-    description: 'Virtual Gazebo Environment',
+    descKey: 'sidebar.map3d.desc',
     category: 'monitoring'
   },
   {
     id: 'map-editor',
-    label: 'Map Editor',
+    labelKey: 'page.map-editor',
     icon: <Edit />,
-    description: 'Create & Edit 2D Maps',
+    descKey: 'sidebar.map_editor.desc',
     category: 'tools'
   },
   {
     id: 'charts',
-    label: 'Real-time Charts',
+    labelKey: 'page.charts',
     icon: <Assessment />,
-    description: 'Live Data Visualization',
+    descKey: 'sidebar.charts.desc',
     category: 'monitoring'
   },
   {
     id: 'diagnostics',
-    label: 'Diagnostics',
+    labelKey: 'page.diagnostics',
     icon: <BugReport />,
-    description: 'System Health & Performance',
+    descKey: 'sidebar.diagnostics.desc',
     category: 'monitoring'
   },
   
@@ -122,51 +123,52 @@ const menuItems: MenuItem[] = [
   // },
   {
     id: 'logs',
-    label: 'System Logs',
+    labelKey: 'page.logs',
     icon: <Storage />,
-    description: 'Real-time Log Monitoring',
+    descKey: 'sidebar.logs.desc',
     category: 'tools'
   },
   {
     id: 'parameters',
-    label: 'Parameters',
+    labelKey: 'page.parameters',
     icon: <Settings />,
-    description: 'Node Configuration',
+    descKey: 'sidebar.parameters.desc',
     category: 'tools'
   },
   
   // System
   {
     id: 'nodes',
-    label: 'Node Manager',
+    labelKey: 'page.nodes',
     icon: <Memory />,
-    description: 'Start/Stop ROS2 Nodes',
+    descKey: 'sidebar.nodes.desc',
     category: 'system'
   },
   {
     id: 'system-status',
-    label: 'System Status',
+    labelKey: 'page.system-status',
     icon: <Assessment />,
-    description: 'Hardware & Software Status',
+    descKey: 'sidebar.system_status.desc',
     category: 'system'
   },
   {
     id: 'system-guide',
-    label: 'HƯỚNG DẪN HỆ THỐNG',
+    labelKey: 'page.system-guide',
     icon: <MenuBook />,
-    description: 'Installation & Setup Guide',
+    descKey: 'sidebar.system_guide.desc',
     category: 'system'
   }
 ];
 
-const categoryLabels = {
-  main: '🎮 Main Control',
-  monitoring: '📊 Monitoring',
-  tools: '🔧 Tools',
-  system: '⚙️ System'
+const categoryLabelKeys = {
+  main: 'sidebar.cat.main',
+  monitoring: 'sidebar.cat.monitoring',
+  tools: 'sidebar.cat.tools',
+  system: 'sidebar.cat.system'
 };
 
 const Sidebar: React.FC<SidebarProps> = ({ selectedPage, onPageChange, isConnected, open, onClose }) => {
+  const { t } = useI18n();
   const drawerWidth = 280;
   
   const renderMenuItems = (category: string) => {
@@ -214,8 +216,8 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedPage, onPageChange, isConnect
             {item.icon}
           </ListItemIcon>
           <ListItemText
-            primary={item.label}
-            secondary={item.description}
+            primary={t(item.labelKey)}
+            secondary={t(item.descKey)}
             secondaryTypographyProps={{
               fontSize: '0.75rem',
               color: selectedPage === item.id ? 'rgba(255,255,255,0.7)' : 'text.secondary'
@@ -250,16 +252,16 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedPage, onPageChange, isConnect
       {/* Header */}
       <Box sx={{ p: 2, textAlign: 'center' }}>
         <Typography variant="h6" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
-          🚗 Autonomous Vehicle
+          🚗 {t('sidebar.header.title', 'Autonomous Vehicle')}
         </Typography>
         <Typography variant="caption" color="text.secondary">
-          Web Control Interface
+          {t('sidebar.header.subtitle', 'Web Control Interface')}
         </Typography>
         
         {/* Connection Status */}
         <Box sx={{ mt: 1 }}>
           <Chip
-            label={isConnected ? 'Connected' : 'Disconnected'}
+            label={isConnected ? t('status.connected') : t('status.disconnected')}
             color={isConnected ? 'success' : 'error'}
             size="small"
             variant="outlined"
@@ -282,7 +284,7 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedPage, onPageChange, isConnect
               textTransform: 'uppercase',
               letterSpacing: '0.5px'
             }}>
-              {categoryLabels.main}
+              {t(categoryLabelKeys.main, '🎮 Main Control')}
             </Typography>
           </ListItem>
           {renderMenuItems('main')}
@@ -298,7 +300,7 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedPage, onPageChange, isConnect
               textTransform: 'uppercase',
               letterSpacing: '0.5px'
             }}>
-              {categoryLabels.monitoring}
+              {t(categoryLabelKeys.monitoring, '📊 Monitoring')}
             </Typography>
           </ListItem>
           {renderMenuItems('monitoring')}
@@ -314,7 +316,7 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedPage, onPageChange, isConnect
               textTransform: 'uppercase',
               letterSpacing: '0.5px'
             }}>
-              {categoryLabels.tools}
+              {t(categoryLabelKeys.tools, '🔧 Tools')}
             </Typography>
           </ListItem>
           {renderMenuItems('tools')}
@@ -330,7 +332,7 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedPage, onPageChange, isConnect
               textTransform: 'uppercase',
               letterSpacing: '0.5px'
             }}>
-              {categoryLabels.system}
+              {t(categoryLabelKeys.system, '⚙️ System')}
             </Typography>
           </ListItem>
           {renderMenuItems('system')}
@@ -341,10 +343,10 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedPage, onPageChange, isConnect
       {/* Footer */}
       <Box sx={{ p: 2, borderTop: '1px solid #e0e0e0' }}>
         <Typography variant="caption" color="text.secondary" align="center" display="block">
-          Indoor Autonomous Vehicle
+          {t('app.title')}
         </Typography>
         <Typography variant="caption" color="text.secondary" align="center" display="block">
-          v1.0.0 - ROS2 Humble
+          v1.0.0 - ROS Noetic
         </Typography>
       </Box>
     </Drawer>

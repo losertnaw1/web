@@ -25,6 +25,7 @@ import {
 import { RobotData } from '../hooks/useWebSocket_simple';
 import { safeNumber, safeToFixed, safeSpeed } from '../utils/numberUtils';
 import { logInfo } from '../utils/backendLogger';
+import { useI18n } from '../i18n/i18n';
 
 interface RobotControlProps {
   onCommand: (command: string, params?: any) => void;
@@ -33,6 +34,7 @@ interface RobotControlProps {
 }
 
 const RobotControl: React.FC<RobotControlProps> = ({ onCommand, robotData, isConnected }) => {
+  const { t } = useI18n();
   const [linearSpeed, setLinearSpeed] = useState(0.2);
   const [angularSpeed, setAngularSpeed] = useState(0.5);
   const [isMoving, setIsMoving] = useState(false);
@@ -82,29 +84,29 @@ const RobotControl: React.FC<RobotControlProps> = ({ onCommand, robotData, isCon
       {/* Connection Status */}
       {!isConnected && (
         <Alert severity="warning" sx={{ mb: 2 }}>
-          Robot not connected
+          {t('rc.warn.not_connected', 'Robot not connected')}
         </Alert>
       )}
 
       {/* Robot Status */}
       <Box sx={{ mb: 2 }}>
         <Typography variant="subtitle2" gutterBottom>
-          Robot Status
+          {t('rc.robot_status', 'Robot Status')}
         </Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           <Chip 
-            label={isConnected ? "Connected" : "Disconnected"} 
+            label={isConnected ? t('status.connected') : t('status.disconnected')} 
             color={isConnected ? "success" : "error"} 
             size="small" 
           />
           <Chip 
-            label={isMoving ? "Moving" : "Stopped"} 
+            label={isMoving ? t('dashboard.moving') : t('dashboard.stopped')} 
             color={isMoving ? "warning" : "default"} 
             size="small" 
           />
           {robotData.battery && (
             <Chip
-              label={`Battery: ${safeToFixed(robotData.battery.percentage, 0)}%`}
+              label={`${t('rc.battery', 'Battery')}: ${safeToFixed(robotData.battery.percentage, 0)}%`}
               color={safeNumber(robotData.battery.percentage) > 20 ? "success" : "error"}
               size="small"
             />
@@ -115,11 +117,11 @@ const RobotControl: React.FC<RobotControlProps> = ({ onCommand, robotData, isCon
       {/* Speed Controls */}
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="subtitle2" gutterBottom>
-          Speed Settings
+          {t('rc.speed_settings', 'Speed Settings')}
         </Typography>
         <Box sx={{ mb: 2 }}>
           <Typography variant="body2" gutterBottom>
-            Linear Speed: {linearSpeed.toFixed(1)} m/s
+            {t('rc.linear_speed', 'Linear Speed')}: {linearSpeed.toFixed(1)} m/s
           </Typography>
           <Slider
             value={linearSpeed}
@@ -133,7 +135,7 @@ const RobotControl: React.FC<RobotControlProps> = ({ onCommand, robotData, isCon
         </Box>
         <Box>
           <Typography variant="body2" gutterBottom>
-            Angular Speed: {angularSpeed.toFixed(1)} rad/s
+            {t('rc.angular_speed', 'Angular Speed')}: {angularSpeed.toFixed(1)} rad/s
           </Typography>
           <Slider
             value={angularSpeed}
@@ -150,7 +152,7 @@ const RobotControl: React.FC<RobotControlProps> = ({ onCommand, robotData, isCon
       {/* Movement Controls */}
       <Paper sx={{ p: 2, mb: 2, flexGrow: 1 }}>
         <Typography variant="subtitle2" gutterBottom>
-          Movement Control
+          {t('rc.movement_control', 'Movement Control')}
         </Typography>
         
         {/* Directional Pad */}
@@ -253,7 +255,7 @@ const RobotControl: React.FC<RobotControlProps> = ({ onCommand, robotData, isCon
             disabled={!isConnected}
             size="small"
           >
-            Stop
+            {t('rc.stop', 'Stop')}
           </Button>
           <Button
             variant="contained"
@@ -263,7 +265,7 @@ const RobotControl: React.FC<RobotControlProps> = ({ onCommand, robotData, isCon
             disabled={!isConnected}
             size="small"
           >
-            Home
+            {t('rc.home', 'Home')}
           </Button>
           <Button
             variant="outlined"
@@ -271,7 +273,7 @@ const RobotControl: React.FC<RobotControlProps> = ({ onCommand, robotData, isCon
             disabled={!isConnected}
             size="small"
           >
-            Set Pose
+            {t('rc.set_pose', 'Set Pose')}
           </Button>
         </Box>
       </Paper>
@@ -279,10 +281,10 @@ const RobotControl: React.FC<RobotControlProps> = ({ onCommand, robotData, isCon
       {/* Current Speed Display */}
       <Paper sx={{ p: 1 }}>
         <Typography variant="caption" display="block">
-          Current Speed: {currentSpeed.toFixed(2)} m/s
+          {t('rc.current_speed', 'Current Speed')}: {currentSpeed.toFixed(2)} m/s
         </Typography>
         <Typography variant="caption" display="block">
-          Angular: {currentAngularSpeed.toFixed(2)} rad/s
+          {t('rc.current_angular', 'Angular')}: {currentAngularSpeed.toFixed(2)} rad/s
         </Typography>
       </Paper>
     </Box>

@@ -18,6 +18,7 @@ import { RobotData, SensorData } from '../hooks/useWebSocket_simple';
 import MapViewer from '../components/MapViewer';
 import { getApiUrl } from '../config/config';
 import { logInfo, logWarn, logError } from '../utils/backendLogger';
+import { useI18n } from '../i18n/i18n';
 
 interface Map2DPageProps {
   robotData: RobotData;
@@ -32,6 +33,7 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
   isConnected,
   onCommand
 }) => {
+  const { t } = useI18n();
   const [showLidar, setShowLidar] = useState(false);  // Default LiDAR OFF
   const [showPath, setShowPath] = useState(true);
   const [showGoals, setShowGoals] = useState(true);
@@ -538,11 +540,11 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <Typography variant="h4" gutterBottom>
-          🗺️ 2D Map View
+          🗺️ {t('map2d.title', '2D Map View')}
         </Typography>
 
         <Box>
-          <Tooltip title="Force refresh map data">
+          <Tooltip title={t('map2d.refresh', 'Force refresh map data')}>
             <span style={{ display: 'inline-block' }}>
               <IconButton
                 onClick={() => fetchMapData(true)}
@@ -553,7 +555,7 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
               </IconButton>
             </span>
           </Tooltip>
-          <Tooltip title="Save the current map">
+          <Tooltip title={t('map2d.save_map', 'Save the current map')}>
             <span style={{ display: 'inline-block' }}>
               <IconButton
                 onClick={() => handleSaveMap()}
@@ -609,7 +611,7 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
                   gutterBottom
                   sx={{ textAlign: 'center', fontWeight: 'bold', m: 0 }}
                 >
-                  🎮 Robot Control (WASD)
+                  {t('map2d.rc_wasd', '🎮 Robot Control (WASD)')}
                 </Typography>
                 <IconButton
                   size="small"
@@ -734,7 +736,7 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
                   color: isConnected ? 'text.secondary' : 'error.main',
                   fontSize: '10px'
                 }}>
-                  {isConnected ? 'Press WASD keys to move' : 'Not connected'}
+                  {isConnected ? t('map2d.wasd.press_to_move', 'Press WASD keys to move') : t('status.disconnected', '🔴 Disconnected')}
                 </Typography>
               </Collapse>
             </Paper>
@@ -746,14 +748,14 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
         <Grid item xs={12} md={3}>
           <Paper sx={{ p: 3, overflow: 'auto' , height: mainHeight }}>
             <Typography variant="h6" gutterBottom>
-              🎛️ Map Controls
+              {t('map2d.controls.title', '🎛️ Map Controls')}
             </Typography>
 
             {/* System Switch Controls */}
             <Card sx={{ mb: 2 }}>
               <CardContent>
                 <Typography variant="subtitle1" gutterBottom>
-                  🗺️ Map Data Source
+                  {t('map2d.controls.map_source_title', '🗺️ Map Data Source')}
                 </Typography>
                 <FormControlLabel
                   control={
@@ -763,12 +765,12 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
                       disabled={loading}
                     />
                   }
-                  label={mapSource === 'static_map' ? 'Static Map' : 'Dynamic Map'}
+                  label={mapSource === 'static_map' ? t('map2d.controls.static_map', 'Static Map') : t('map2d.controls.dynamic_map', 'Dynamic Map')}
                 />
                 <Typography variant="caption" display="block" color="text.secondary">
                   {mapSource === 'static_map'
-                    ? 'Using pre-built static map'
-                    : 'Using real-time SLAM map'}
+                    ? t('map2d.controls.map_source.desc.static', 'Using pre-built static map')
+                    : t('map2d.controls.map_source.desc.dynamic', 'Using real-time SLAM map')}
                 </Typography>
               </CardContent>
             </Card>
@@ -776,7 +778,7 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
             <Card sx={{ mb: 2 }}>
               <CardContent>
                 <Typography variant="subtitle1" gutterBottom>
-                  📍 Robot Position Mode
+                  {t('map2d.controls.position_mode_title', '📍 Robot Position Mode')}
                 </Typography>
                 <FormControlLabel
                   control={
@@ -786,16 +788,16 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
                       disabled={loading}
                     />
                   }
-                  label={positionMode === 'receive_from_ros' ? 'Receive from ROS' : 'Send to ROS'}
+                  label={positionMode === 'receive_from_ros' ? t('map2d.controls.receive_from_ros', 'Receive from ROS') : t('map2d.controls.send_to_ros', 'Send to ROS')}
                 />
                 <Typography variant="caption" display="block" color="text.secondary">
                   {positionMode === 'receive_from_ros'
-                    ? 'Robot position updates from ROS'
-                    : 'Click map to set initial pose'}
+                    ? t('map2d.controls.position.desc.receive', 'Robot position updates from ROS')
+                    : t('map2d.controls.position.desc.send', 'Click map to set initial pose')}
                 </Typography>
                 {positionMode === 'send_to_ros' && (
                   <Alert severity="info" sx={{ mt: 1 }}>
-                    Click on the map to set robot initial position
+                    {t('map2d.controls.position.alert', 'Click on the map to set robot initial position')}
                   </Alert>
                 )}
               </CardContent>
@@ -804,7 +806,7 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
             <Card sx={{ mb: 2 }}>
               <CardContent>
                 <Typography variant="subtitle1" gutterBottom>
-                  🤖 Robot Running Mode
+                  {t('map2d.controls.running_mode_title', '🤖 Robot Running Mode')}
                 </Typography>
                 <FormControlLabel
                   control={
@@ -814,12 +816,12 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
                       disabled={loading}
                     />
                   }
-                  label={runningMode === 'line_following' ? 'Line Following' : 'SLAM Auto'}
+                  label={runningMode === 'line_following' ? t('map2d.controls.line_following', 'Line Following') : t('map2d.controls.slam_auto', 'SLAM Auto')}
                 />
                 <Typography variant="caption" display="block" color="text.secondary">
                   {runningMode === 'line_following'
-                    ? 'Robot follows predefined paths'
-                    : 'Autonomous navigation with SLAM'}
+                    ? t('map2d.controls.running.desc.line_following', 'Robot follows predefined paths')
+                    : t('map2d.controls.running.desc.slam', 'Autonomous navigation with SLAM')}
                 </Typography>
               </CardContent>
             </Card>
@@ -828,7 +830,7 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
             <Card sx={{ mb: 2, opacity: positionMode === 'send_to_ros' ? 0.6 : 1 }}>
               <CardContent>
                 <Typography variant="subtitle1" gutterBottom>
-                  📌 Multi-Goal Mode (Cycle)
+                  {t('map2d.controls.multi_goal_title', '📌 Multi-Goal Mode (Cycle)')}
                 </Typography>
                 <FormControlLabel
                   control={
@@ -838,19 +840,19 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
                       disabled={loading || positionMode === 'send_to_ros'}
                     />
                   }
-                  label={multiGoalMode ? 'Multiple Goals' : 'Single Goal'}
+                  label={multiGoalMode ? t('map2d.controls.multiple_goals', 'Multiple Goals') : t('map2d.controls.single_goal', 'Single Goal')}
                 />
                 <Typography variant="caption" display="block" color="text.secondary">
-                  {positionMode === 'send_to_ros' ? 'Disabled while setting initial pose' : (multiGoalMode ? 'Pick multiple goals; drag to set direction' : 'Pick a single goal')}
+                  {positionMode === 'send_to_ros' ? t('map2d.controls.multi_goal.disabled', 'Disabled while setting initial pose') : (multiGoalMode ? t('map2d.controls.multi_goal.hint_multi', 'Pick multiple goals; drag to set direction') : t('map2d.controls.multi_goal.hint_single', 'Pick a single goal'))}
                 </Typography>
                 {multiGoalMode && (
                   <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                    <Typography variant="caption">Selected: {multiGoals.length}</Typography>
+                    <Typography variant="caption">{t('map2d.controls.selected', 'Selected')}: {multiGoals.length}</Typography>
                     <Button size="small" variant="contained" onClick={runMultiGoals} disabled={!multiGoals.length || isRunningMultiGoals}>
-                      Run
+                      {t('map2d.controls.run', 'Run')}
                     </Button>
                     <Button size="small" variant="outlined" onClick={clearMultiGoals} disabled={!multiGoals.length || isRunningMultiGoals}>
-                      Clear
+                      {t('map2d.controls.clear', 'Clear')}
                     </Button>
                   </Box>
                 )}
@@ -861,13 +863,13 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
 
             {/* Existing Map Display Controls */}
             <Typography variant="subtitle1" gutterBottom>
-              🎨 Display Options
+              🎨 {t('map2d.display_options', 'Display Options')}
             </Typography>
             
             {/* Display Options */}
             <Box sx={{ mb: 3 }}>
               <Typography variant="subtitle2" gutterBottom>
-                Display Options:
+                {t('map2d.display_options_label', 'Display Options:')}
               </Typography>
               <FormControlLabel
                 control={
@@ -876,7 +878,7 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
                     onChange={(e) => setShowLidar(e.target.checked)}
                   />
                 }
-                label="Show LiDAR Scan"
+                label={t('map2d.show_lidar', 'Show LiDAR Scan')}
               />
               <FormControlLabel
                 control={
@@ -885,7 +887,7 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
                     onChange={(e) => setShowPath(e.target.checked)}
                   />
                 }
-                label="Show Path"
+                label={t('map2d.show_path', 'Show Path')}
               />
               <FormControlLabel
                 control={
@@ -894,7 +896,7 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
                     onChange={(e) => setShowGoals(e.target.checked)}
                   />
                 }
-                label="Show Goals"
+                label={t('map2d.show_goals', 'Show Goals')}
               />
               <FormControlLabel
                 control={
@@ -903,14 +905,14 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
                     onChange={(e) => setAutoCenter(e.target.checked)}
                   />
                 }
-                label="Auto Center on Robot"
+                label={t('map2d.auto_center', 'Auto Center on Robot')}
               />
             </Box>
 
             {/* Quick Navigation */}
             <Box sx={{ mb: 3 }}>
               <Typography variant="subtitle2" gutterBottom>
-                Quick Navigation:
+                {t('map2d.quick_nav', 'Quick Navigation:')}
               </Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                 <Button
@@ -919,7 +921,7 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
                   onClick={() => handleNavigateToGoal(0, 0)}
                   disabled={!isConnected}
                 >
-                  🏠 Go Home (0, 0)
+                  {t('map2d.go_home', '🏠 Go Home (0, 0)')}
                 </Button>
                 <Button
                   variant="outlined"
@@ -927,7 +929,7 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
                   onClick={() => handleNavigateToGoal(2, 2)}
                   disabled={!isConnected}
                 >
-                  📍 Point A (2, 2)
+                  {t('map2d.point_a', '📍 Point A (2, 2)')}
                 </Button>
                 <Button
                   variant="outlined"
@@ -935,7 +937,7 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
                   onClick={() => handleNavigateToGoal(-2, 2)}
                   disabled={!isConnected}
                 >
-                  📍 Point B (-2, 2)
+                  {t('map2d.point_b', '📍 Point B (-2, 2)')}
                 </Button>
                 <Button
                   variant="outlined"
@@ -943,7 +945,7 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
                   onClick={() => handleNavigateToGoal(0, -2)}
                   disabled={!isConnected}
                 >
-                  📍 Point C (0, -2)
+                  {t('map2d.point_c', '📍 Point C (0, -2)')}
                 </Button>
                 <Button
                   variant="contained"
@@ -952,15 +954,15 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
                   onClick={() => onCommand('cancel_navigation')}
                   disabled={!isConnected}
                 >
-                  ❌ Cancel Goal
+                  {t('map2d.cancel_goal', '❌ Cancel Goal')}
                 </Button>
-              </Box>
             </Box>
+          </Box>
 
             {/* Robot Status */}
             <Box sx={{ mb: 3 }}>
               <Typography variant="subtitle2" gutterBottom>
-                Robot Status:
+                {t('map2d.robot_status', 'Robot Status:')}
               </Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                 <Typography variant="body2">
@@ -1035,44 +1037,44 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
         <Grid item xs={12}>
           <Paper sx={{ p: 3 }}>
             <Typography variant="h6" gutterBottom>
-              🗂️ Map Legend & Instructions
+              {t('map2d.legend.title', '🗂️ Map Legend & Instructions')}
             </Typography>
             <Grid container spacing={3}>
               <Grid item xs={12} md={4}>
                 <Typography variant="subtitle2" gutterBottom>
-                  🎨 Map Elements:
+                  {t('map2d.legend.elements_title', '🎨 Map Elements:')}
                 </Typography>
                 <ul>
-                  <li><strong>🟢 Green Circle:</strong> Robot position</li>
-                  <li><strong>🔵 Blue Line:</strong> Robot direction</li>
-                  <li><strong>🟢 Green Dots:</strong> LiDAR scan points</li>
-                  <li><strong>🟤 Brown Rectangles:</strong> Obstacles/walls</li>
-                  <li><strong>⚪ White Areas:</strong> Free space</li>
-                  <li><strong>🔲 Gray Areas:</strong> Unknown space</li>
+                  <li>{t('map2d.legend.green_circle', '🟢 Green Circle: Robot position')}</li>
+                  <li>{t('map2d.legend.blue_line', '🔵 Blue Line: Robot direction')}</li>
+                  <li>{t('map2d.legend.green_dots', '🟢 Green Dots: LiDAR scan points')}</li>
+                  <li>{t('map2d.legend.brown_rects', '🟤 Brown Rectangles: Obstacles/walls')}</li>
+                  <li>{t('map2d.legend.white_areas', '⚪ White Areas: Free space')}</li>
+                  <li>{t('map2d.legend.gray_areas', '🔲 Gray Areas: Unknown space')}</li>
                 </ul>
               </Grid>
               <Grid item xs={12} md={4}>
                 <Typography variant="subtitle2" gutterBottom>
-                  🖱️ Interaction:
+                  {t('map2d.legend.interaction_title', '🖱️ Interaction:')}
                 </Typography>
                 <ul>
-                  <li><strong>Click:</strong> Set navigation goal</li>
-                  <li><strong>WASD Keys:</strong> Move robot directly</li>
-                  <li><strong>Control Panel:</strong> Visual WASD in bottom-right</li>
-                  <li><strong>Fullscreen:</strong> Open in fullscreen mode</li>
+                  <li>{t('map2d.legend.interaction.click', 'Click: Set navigation goal')}</li>
+                  <li>{t('map2d.legend.interaction.wasd', 'WASD Keys: Move robot directly')}</li>
+                  <li>{t('map2d.legend.interaction.control_panel', 'Control Panel: Visual WASD in bottom-right')}</li>
+                  <li>{t('map2d.legend.interaction.fullscreen', 'Fullscreen: Open in fullscreen mode')}</li>
                 </ul>
               </Grid>
               <Grid item xs={12} md={4}>
                 <Typography variant="subtitle2" gutterBottom>
-                  ⚠️ Control Tips:
+                  {t('map2d.legend.tips_title', '⚠️ Control Tips:')}
                 </Typography>
                 <ul>
-                  <li><strong>WASD:</strong> W=Forward, S=Back, A=Left, D=Right</li>
-                  <li><strong>Stop Button:</strong> Click red stop or release keys</li>
-                  <li><strong>Navigation:</strong> Click on free (white) areas</li>
-                  <li><strong>Manual Control:</strong> Use WASD for precise positioning</li>
-                  <li><strong>Map Building:</strong> Move robot to explore areas</li>
-                  <li>Monitor robot progress and avoid obstacles</li>
+                  <li>{t('map2d.legend.tips.wasd', 'WASD: W=Forward, S=Back, A=Left, D=Right')}</li>
+                  <li>{t('map2d.legend.tips.stop', 'Stop Button: Click red stop or release keys')}</li>
+                  <li>{t('map2d.legend.tips.navigation', 'Navigation: Click on free (white) areas')}</li>
+                  <li>{t('map2d.legend.tips.manual', 'Manual Control: Use WASD for precise positioning')}</li>
+                  <li>{t('map2d.legend.tips.mapping', 'Map Building: Move robot to explore areas')}</li>
+                  <li>{t('map2d.legend.tips.monitor', 'Monitor robot progress and avoid obstacles')}</li>
                 </ul>
               </Grid>
             </Grid>

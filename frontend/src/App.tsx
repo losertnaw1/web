@@ -28,6 +28,8 @@ import SystemGuidePage from './pages/SystemGuidePage';
 // Import WebSocket hook and config
 import { useWebSocket } from './hooks/useWebSocket_simple';
 import { getWebSocketUrl,getApiUrl } from './config/config';
+import { useI18n } from './i18n/i18n';
+import LanguageSwitch from './components/LanguageSwitch';
 
 // Create Material-UI theme
 const theme = createTheme({
@@ -76,6 +78,7 @@ const theme = createTheme({
 });
 
 function App() {
+  const { t } = useI18n();
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
   const [selectedPage, setSelectedPage] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -332,11 +335,13 @@ function App() {
                 <MenuIcon />
               </IconButton>
               <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-                Indoor Autonomous Vehicle - {getPageTitle(selectedPage)}
+                {t('app.title')} - {getPageTitle(selectedPage)}
               </Typography>
+              {/* Language switch to the left of status */}
+              <LanguageSwitch />
               <Typography variant="body2" color={connectionStatus === 'connected' ? 'lightgreen' : 'orange'}>
-                {connectionStatus === 'connected' ? '🟢 Connected' :
-                 connectionStatus === 'connecting' ? '🟡 Connecting...' : '🔴 Disconnected'}
+                {connectionStatus === 'connected' ? t('status.connected') :
+                 connectionStatus === 'connecting' ? t('status.connecting') : t('status.disconnected')}
               </Typography>
             </Toolbar>
           </AppBar>
@@ -359,20 +364,20 @@ function App() {
   // Helper function to get page title
   function getPageTitle(page: string): string {
     const titles: { [key: string]: string } = {
-      'dashboard': 'Dashboard',
-      'robot-control': 'Robot Control',
-      'navigation': 'Navigation',
-      'sensors': 'Sensors',
-      'map-2d': '2D Map View',
-      'map-3d': '3D Visualization',
-      'charts': 'Real-time Charts',
-      'diagnostics': 'Diagnostics',
+      'dashboard': t('page.dashboard'),
+      'robot-control': t('page.robot-control'),
+      'navigation': t('page.navigation'),
+      'sensors': t('page.sensors'),
+      'map-2d': t('page.map-2d'),
+      'map-3d': t('page.map-3d'),
+      'charts': t('page.charts'),
+      'diagnostics': t('page.diagnostics'),
       // 'terminal': 'Terminal',
-      'logs': 'System Logs',
-      'parameters': 'Parameters',
-      'nodes': 'Node Manager',
-      'system-status': 'System Status',
-      'system-guide': 'HƯỚNG DẪN HỆ THỐNG'
+      'logs': t('page.logs'),
+      'parameters': t('page.parameters'),
+      'nodes': t('page.nodes'),
+      'system-status': t('page.system-status'),
+      'system-guide': t('page.system-guide')
     };
     return titles[page] || 'Dashboard';
   }

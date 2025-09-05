@@ -4,6 +4,7 @@ import { Box, Typography, Button, Dialog, DialogTitle, DialogContent, IconButton
 import { Fullscreen, Close } from '@mui/icons-material';
 import { RobotData, SensorData } from '../hooks/useWebSocket_simple';
 import MapViewer2D from './MapViewer2D';
+import { useI18n } from '../i18n/i18n';
 
 interface MapViewerProps {
   robotData: RobotData;
@@ -18,6 +19,7 @@ interface MapViewerProps {
 }
 
 const MapViewer: React.FC<MapViewerProps> = ({ robotData, sensorData, onMapClick, showLidar = false, isSettingInitialPose = false, isSettingNavGoal = true, multiGoalMode = false, multiGoals = [], onMultiGoalsChange }) => {
+  const { t } = useI18n();
   const [fullscreenOpen, setFullscreenOpen] = useState(false);
   const [goals, setGoals] = useState<Array<{x: number; y: number; theta: number}>>([]);
   const [displayPath, setDisplayPath] = useState<Array<{x: number; y: number}>>([]);
@@ -122,7 +124,7 @@ const MapViewer: React.FC<MapViewerProps> = ({ robotData, sensorData, onMapClick
         {/* Map Header */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
           <Typography variant="h6">
-            🗺️ Interactive Map
+            {t('map.header.interactive')}
           </Typography>
           <Button
             startIcon={<Fullscreen />}
@@ -130,7 +132,7 @@ const MapViewer: React.FC<MapViewerProps> = ({ robotData, sensorData, onMapClick
             size="small"
             variant="outlined"
           >
-            Fullscreen
+            {t('map.fullscreen')}
           </Button>
         </Box>
 
@@ -152,19 +154,16 @@ const MapViewer: React.FC<MapViewerProps> = ({ robotData, sensorData, onMapClick
         {/* Map Info */}
         <Box sx={{ mt: 1, p: 1, bgcolor: 'grey.100', borderRadius: 1 }}>
           <Typography variant="caption" display="block">
-            {isSettingInitialPose
-              ? '📍 Click to set position, then click again to set direction'
-              : '📍 Click on map to set navigation goal'
-            }
+            {isSettingInitialPose ? t('map.instruction.initial') : t('map.instruction.goal')}
             {!sensorData.map && (
-              <span style={{ color: 'orange' }}> (Using fallback map - no real map data from ROS2)</span>
+              <span style={{ color: 'orange' }}> {t('map.info.fallback')}</span>
             )}
           </Typography>
           <Box sx={{ display: 'flex', gap: 2, fontSize: '12px', color: 'text.secondary' }}>
-            <span>Resolution: {mapData.resolution}m/pixel</span>
-            <span>Size: {mapData.width}×{mapData.height}</span>
+            <span>{t('map.info.resolution', 'Resolution')}: {mapData.resolution}m/pixel</span>
+            <span>{t('map.info.size', 'Size')}: {mapData.width}×{mapData.height}</span>
             {robotPose && (
-              <span>Robot: ({robotPose.x.toFixed(2)}, {robotPose.y.toFixed(2)})</span>
+              <span>{t('map.info.robot', 'Robot')}: ({robotPose.x.toFixed(2)}, {robotPose.y.toFixed(2)})</span>
             )}
           </Box>
         </Box>
@@ -178,7 +177,7 @@ const MapViewer: React.FC<MapViewerProps> = ({ robotData, sensorData, onMapClick
         fullScreen
       >
         <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Typography variant="h6">🗺️ Map View - Fullscreen</Typography>
+          <Typography variant="h6">{t('map.dialog.title')}</Typography>
           <IconButton onClick={() => setFullscreenOpen(false)}>
             <Close />
           </IconButton>

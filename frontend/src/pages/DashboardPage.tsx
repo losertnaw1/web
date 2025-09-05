@@ -2,6 +2,7 @@ import React from 'react';
 import { Grid, Paper, Typography, Box, Card, CardContent, LinearProgress } from '@mui/material';
 import { RobotData, SensorData, SystemData } from '../hooks/useWebSocket_simple';
 import { safeNumber, safeToFixed, safeSpeed } from '../utils/numberUtils';
+import { useI18n } from '../i18n/i18n';
 
 interface DashboardPageProps {
   robotData: RobotData;
@@ -18,6 +19,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
   isConnected,
   onCommand
 }) => {
+  const { t } = useI18n();
   // Calculate some quick stats
   const batteryLevel = safeNumber(robotData.battery?.percentage);
   const speed = robotData.odom ?
@@ -27,10 +29,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h4" gutterBottom>
-        🎮 Dashboard
+        🎮 {t('dashboard.title', 'Dashboard')}
       </Typography>
       <Typography variant="subtitle1" color="text.secondary" gutterBottom>
-        Quick overview and essential controls
+        {t('dashboard.subtitle', 'Quick overview and essential controls')}
       </Typography>
 
       <Grid container spacing={3}>
@@ -44,7 +46,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
               <Card sx={{ height: '100%' }}>
                 <CardContent>
                   <Typography variant="h6" gutterBottom>
-                    🔋 Battery
+                    🔋 {t('dashboard.battery', 'Battery')}
                   </Typography>
                   <Typography variant="h4" color={batteryLevel > 20 ? 'success.main' : 'error.main'}>
                     {batteryLevel.toFixed(0)}%
@@ -64,7 +66,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
               <Card sx={{ height: '100%' }}>
                 <CardContent>
                   <Typography variant="h6" gutterBottom>
-                    🏃 Speed
+                    🏃 {t('dashboard.speed', 'Speed')}
                   </Typography>
                   <Typography variant="h4" color="primary.main">
                     {speed.toFixed(2)}
@@ -81,7 +83,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
               <Card sx={{ height: '100%' }}>
                 <CardContent>
                   <Typography variant="h6" gutterBottom>
-                    📍 Position
+                    📍 {t('dashboard.position', 'Position')}
                   </Typography>
                   <Typography variant="body1">
                     X: {(robotData.odom?.position?.x || 0).toFixed(2)}
@@ -98,13 +100,13 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
               <Card sx={{ height: '100%' }}>
                 <CardContent>
                   <Typography variant="h6" gutterBottom>
-                    📡 LiDAR
+                    📡 {t('dashboard.lidar', 'LiDAR')}
                   </Typography>
                   <Typography variant="h4" color="info.main">
                     {lidarPoints}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    points detected
+                    {t('dashboard.lidar_points', 'points detected')}
                   </Typography>
                 </CardContent>
               </Card>
@@ -117,12 +119,12 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
         <Grid item xs={12} md={4}>
           <Paper sx={{ p: 2, height: '400px' }}>
             <Typography variant="h6" gutterBottom>
-              🤖 Robot Status
+              🤖 {t('dashboard.robot_status', 'Robot Status')}
             </Typography>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <Box>
                 <Typography variant="subtitle2" gutterBottom>
-                  📍 Current Position
+                  📍 {t('dashboard.current_position', 'Current Position')}
                 </Typography>
                 <Typography variant="body1">
                   X: {safeToFixed(robotData.odom?.position?.x, 2)} m
@@ -134,19 +136,19 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
 
               <Box>
                 <Typography variant="subtitle2" gutterBottom>
-                  🏃 Movement
+                  🏃 {t('dashboard.movement', 'Movement')}
                 </Typography>
                 <Typography variant="body1">
-                  Speed: {speed.toFixed(2)} m/s
+                  {t('dashboard.speed_label', 'Speed')}: {speed.toFixed(2)} m/s
                 </Typography>
                 <Typography variant="body1">
-                  Status: {speed > 0.01 ? '🟢 Moving' : '⏸️ Stopped'}
+                  {t('dashboard.status', 'Status')}: {speed > 0.01 ? t('dashboard.moving', '🟢 Moving') : t('dashboard.stopped', '⏸️ Stopped')}
                 </Typography>
               </Box>
 
               <Box>
                 <Typography variant="subtitle2" gutterBottom>
-                  🔋 Power
+                  🔋 {t('dashboard.power', 'Power')}
                 </Typography>
                 <Typography variant="body1" color={batteryLevel > 20 ? 'success.main' : 'error.main'}>
                   Battery: {batteryLevel.toFixed(0)}%
@@ -160,33 +162,33 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
         <Grid item xs={12} md={4}>
           <Paper sx={{ p: 2, height: '400px' }}>
             <Typography variant="h6" gutterBottom>
-              🧭 Navigation Status
+              🧭 {t('dashboard.nav_status', 'Navigation Status')}
             </Typography>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <Box>
                 <Typography variant="subtitle2" gutterBottom>
-                  📍 Current Goal
+                  📍 {t('dashboard.current_goal', 'Current Goal')}
                 </Typography>
                 <Typography variant="body1">
-                  Status: No active goal
+                  {t('dashboard.goal_status', 'Status')}: {t('dashboard.no_active_goal', 'No active goal')}
                 </Typography>
               </Box>
 
               <Box>
                 <Typography variant="subtitle2" gutterBottom>
-                  🗺️ Map Status
+                  🗺️ {t('dashboard.map_status', 'Map Status')}
                 </Typography>
                 <Typography variant="body1" color={sensorData.map ? 'success.main' : 'error.main'}>
-                  {sensorData.map ? '🟢 Map loaded' : '🔴 No map'}
+                  {sensorData.map ? t('dashboard.map_loaded', '🟢 Map loaded') : t('dashboard.no_map', '🔴 No map')}
                 </Typography>
               </Box>
 
               <Box>
                 <Typography variant="subtitle2" gutterBottom>
-                  🎯 Path Planning
+                  🎯 {t('dashboard.path_planning', 'Path Planning')}
                 </Typography>
                 <Typography variant="body1">
-                  Ready for navigation
+                  {t('dashboard.ready_for_nav', 'Ready for navigation')}
                 </Typography>
               </Box>
             </Box>
@@ -197,33 +199,33 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
         <Grid item xs={12} md={4}>
           <Paper sx={{ p: 2, height: '400px' }}>
             <Typography variant="h6" gutterBottom>
-              ⚙️ System Health
+              ⚙️ {t('dashboard.system_health', 'System Health')}
             </Typography>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <Box>
                 <Typography variant="subtitle2" gutterBottom>
-                  🔗 Connections
+                  🔗 {t('dashboard.connections', 'Connections')}
                 </Typography>
                 <Typography variant="body1" color={isConnected ? 'success.main' : 'error.main'}>
-                  WebSocket: {isConnected ? '🟢 Connected' : '🔴 Disconnected'}
+                  WebSocket: {isConnected ? t('status.connected', '🟢 Connected') : t('status.disconnected', '🔴 Disconnected')}
                 </Typography>
               </Box>
 
               <Box>
                 <Typography variant="subtitle2" gutterBottom>
-                  🤖 ROS2 Nodes
+                  🤖 {t('dashboard.ros_nodes', 'ROS Nodes')}
                 </Typography>
                 <Typography variant="body1" color={systemData?.node_status ? 'success.main' : 'warning.main'}>
-                  Active: {Object.keys(systemData?.node_status || {}).length} nodes
+                  {t('dashboard.active_nodes', 'Active')}: {Object.keys(systemData?.node_status || {}).length} {t('dashboard.nodes', 'nodes')}
                 </Typography>
               </Box>
 
               <Box>
                 <Typography variant="subtitle2" gutterBottom>
-                  📊 Diagnostics
+                  📊 {t('dashboard.diagnostics', 'Diagnostics')}
                 </Typography>
                 <Typography variant="body1" color={systemData?.diagnostics ? 'success.main' : 'warning.main'}>
-                  {systemData?.diagnostics ? '🟢 All systems OK' : '🟡 No diagnostics'}
+                  {systemData?.diagnostics ? t('dashboard.all_ok', '🟢 All systems OK') : t('dashboard.no_diag', '🟡 No diagnostics')}
                 </Typography>
               </Box>
             </Box>
@@ -234,7 +236,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
         <Grid item xs={12}>
           <Paper sx={{ p: 2 }}>
             <Typography variant="h6" gutterBottom>
-              ⚡ Quick Actions
+              ⚡ {t('dashboard.quick_actions', 'Quick Actions')}
             </Typography>
             <Grid container spacing={2}>
               <Grid item>
@@ -251,7 +253,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
                     fontSize: '16px'
                   }}
                 >
-                  🛑 Emergency Stop
+                  {t('dashboard.emergency_stop', '🛑 Emergency Stop')}
                 </button>
               </Grid>
               <Grid item>
@@ -268,7 +270,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
                     fontSize: '16px'
                   }}
                 >
-                  🏠 Go Home
+                  {t('dashboard.go_home', '🏠 Go Home')}
                 </button>
               </Grid>
               <Grid item>
@@ -285,7 +287,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
                     fontSize: '16px'
                   }}
                 >
-                  🚀 Start Navigation
+                  {t('dashboard.start_nav', '🚀 Start Navigation')}
                 </button>
               </Grid>
             </Grid>
@@ -296,7 +298,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
         <Grid item xs={12}>
           <Paper sx={{ p: 2 }}>
             <Typography variant="h6" gutterBottom>
-              📊 System Overview
+              📊 {t('dashboard.system_overview', 'System Overview')}
             </Typography>
             <Grid container spacing={2}>
               <Grid item xs={12} sm={6} md={3}>
@@ -305,7 +307,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
                     {isConnected ? '🟢' : '🔴'}
                   </Typography>
                   <Typography variant="body2">
-                    WebSocket Connection
+                    {t('dashboard.websocket_conn', 'WebSocket Connection')}
                   </Typography>
                 </Box>
               </Grid>
@@ -315,7 +317,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
                     {systemData?.node_status ? '🟢' : '🟡'}
                   </Typography>
                   <Typography variant="body2">
-                    ROS2 Nodes ({Object.keys(systemData?.node_status || {}).length})
+                    {t('dashboard.ros_nodes_count', 'ROS Nodes')} ({Object.keys(systemData?.node_status || {}).length})
                   </Typography>
                 </Box>
               </Grid>
@@ -325,7 +327,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
                     {sensorData.scan ? '🟢' : '🔴'}
                   </Typography>
                   <Typography variant="body2">
-                    LiDAR Sensor
+                    {t('dashboard.lidar_sensor', 'LiDAR Sensor')}
                   </Typography>
                 </Box>
               </Grid>
@@ -335,7 +337,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
                     {robotData.odom ? '🟢' : '🔴'}
                   </Typography>
                   <Typography variant="body2">
-                    Odometry
+                    {t('dashboard.odometry', 'Odometry')}
                   </Typography>
                 </Box>
               </Grid>

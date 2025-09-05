@@ -264,6 +264,7 @@ class ROS1WebBridge:
                     'current': 0.0,
                     'charge': 0.0,
                     'capacity': 0.0,
+                    # Normalize to 0..100 for frontend
                     'percentage': 0.0,
                     'power_supply_status': 0,
                     'power_supply_health': 0,
@@ -272,34 +273,89 @@ class ROS1WebBridge:
 
                 # Try to extract data from the message dynamically
                 # Check for standard BatteryState fields
+                # Voltage: support standard and custom field names
                 if hasattr(msg, 'voltage'):
                     battery_data['voltage'] = float(msg.voltage)
+                elif hasattr(msg, 'totalVoltage'):
+                    battery_data['voltage'] = float(getattr(msg, 'totalVoltage'))
                 if hasattr(msg, 'current'):
                     battery_data['current'] = float(msg.current)
                 if hasattr(msg, 'charge'):
                     battery_data['charge'] = float(msg.charge)
                 if hasattr(msg, 'capacity'):
                     battery_data['capacity'] = float(msg.capacity)
+                # percentage can be 0..1 (ROS BatteryState) or 0..100 (custom). We'll normalize below.
+                raw_percentage = None
                 if hasattr(msg, 'percentage'):
-                    battery_data['percentage'] = float(msg.percentage)
+                    try:
+                        raw_percentage = float(msg.percentage)
+                    except Exception:
+                        raw_percentage = None
                 if hasattr(msg, 'power_supply_status'):
                     battery_data['power_supply_status'] = int(msg.power_supply_status)
                 if hasattr(msg, 'power_supply_health'):
                     battery_data['power_supply_health'] = int(msg.power_supply_health)
+                if hasattr(msg, 'status'):
+                    try:
+                        battery_data['status'] = str(getattr(msg, 'status'))
+                    except Exception:
+                        pass
 
                 # Check for custom message fields (common alternatives)
                 if hasattr(msg, 'volt') and battery_data['voltage'] == 0.0:
                     battery_data['voltage'] = float(msg.volt)
                 if hasattr(msg, 'amp') and battery_data['current'] == 0.0:
                     battery_data['current'] = float(msg.amp)
-                if hasattr(msg, 'percent') and battery_data['percentage'] == 0.0:
-                    battery_data['percentage'] = float(msg.percent)
-                if hasattr(msg, 'level') and battery_data['percentage'] == 0.0:
-                    battery_data['percentage'] = float(msg.level)
+                # Some custom msgs might use percent/level/soc or other aliases
+                if raw_percentage is None and hasattr(msg, 'percent'):
+                    try:
+                        raw_percentage = float(getattr(msg, 'percent'))
+                    except Exception:
+                        pass
+                if raw_percentage is None and hasattr(msg, 'level'):
+                    try:
+                        raw_percentage = float(getattr(msg, 'level'))
+                    except Exception:
+                        pass
+                if raw_percentage is None and hasattr(msg, 'soc'):
+                    try:
+                        raw_percentage = float(getattr(msg, 'soc'))
+                    except Exception:
+                        pass
+                # Uppercase SOC from amr_battery/Battery_msgs
+                if raw_percentage is None and hasattr(msg, 'SOC'):
+                    try:
+                        raw_percentage = float(getattr(msg, 'SOC'))
+                    except Exception:
+                        pass
+                # Additional common aliases
+                for alias in (
+                    'percent_remaining', 'percentage_remaining', 'battery_percentage',
+                    'percentage_soc', 'state_of_charge', 'state_of_charge_pct',
+                    'soc_percent', 'remaining_percent', 'remain'
+                ):
+                    if raw_percentage is None and hasattr(msg, alias):
+                        try:
+                            raw_percentage = float(getattr(msg, alias))
+                        except Exception:
+                            raw_percentage = None
 
-                # Log the extracted data for debugging
-                # rospy.loginfo(f"🔋 [ROS Bridge] Battery data extracted: voltage={battery_data['voltage']:.2f}V, "
-                #              f"current={battery_data['current']:.2f}A, percentage={battery_data['percentage']:.1f}%")
+                # Normalize percentage to 0..100 for frontend display
+                if raw_percentage is not None:
+                    pct = float(raw_percentage)
+                    # If it looks like 0..1, scale to 0..100
+                    if 0.0 <= pct <= 1.0:
+                        pct *= 100.0
+                    # If it's already 0..100, keep as is
+                    # Clamp to [0,100]
+                    battery_data['percentage'] = max(0.0, min(100.0, pct))
+                # Fallback: compute from charge/capacity if available and valid
+                elif battery_data.get('capacity', 0.0) > 0.0 and battery_data.get('charge', 0.0) >= 0.0:
+                    try:
+                        pct = (float(battery_data['charge']) / float(battery_data['capacity'])) * 100.0
+                        battery_data['percentage'] = max(0.0, min(100.0, pct))
+                    except Exception:
+                        pass
 
                 self.latest_data['battery'] = battery_data
                 self._trigger_websocket_callback('battery', battery_data)
