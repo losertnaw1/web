@@ -138,7 +138,10 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
   // ADDED: Handle mouse drag for panning
   const [isDragging, setIsDragging] = useState(false);
   const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 });
+  const dragStartRef = useRef<{ x: number; y: number } | null>(null);
+  const dragMovedRef = useRef<boolean>(false);
   const [isSettingGoalAngle, setIsSettingGoalAngle] = useState(false);
+  const DRAG_THRESHOLD_PX = 5; // movement threshold to consider as panning
 
   const handleMouseDown = (event: React.MouseEvent) => {
     const rect = canvasRef.current?.getBoundingClientRect();
@@ -167,6 +170,8 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
       } else {
         setIsDragging(true);
         setLastMousePos({ x: event.clientX, y: event.clientY });
+        dragStartRef.current = { x: event.clientX, y: event.clientY };
+        dragMovedRef.current = false;
       }
     }
   };
@@ -187,6 +192,15 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
       
       setLastMousePos({ x: event.clientX, y: event.clientY });
       canvasRef.current.style.cursor = 'grabbing';
+
+      // Mark as true drag if moved beyond threshold from drag start
+      if (dragStartRef.current) {
+        const totalDx = event.clientX - dragStartRef.current.x;
+        const totalDy = event.clientY - dragStartRef.current.y;
+        if (Math.hypot(totalDx, totalDy) >= DRAG_THRESHOLD_PX) {
+          dragMovedRef.current = true;
+        }
+      }
     } else {
       // Handle cursor for goal validity (existing logic)
       const currentX = event.clientX - rect.left;
@@ -222,10 +236,13 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
   const handleMouseClick = (event: React.MouseEvent) => {
     // In multi-goal mode, creation is handled on mousedown; ignore click
     if (multiGoalMode) return;
-    // Only process click if not dragging
-    if (!isDragging) {
+    // Only process click if not a drag/pan
+    if (!isDragging && !dragMovedRef.current) {
       handleMapClick(event);
     }
+    // Reset drag markers after click processing
+    dragMovedRef.current = false;
+    dragStartRef.current = null;
   };
 
   // ADDED: Reset zoom and pan

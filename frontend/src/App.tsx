@@ -352,11 +352,6 @@ function App() {
           </Box>
 
         </Box>
-
-        {/* Connection Debugger - only show in development */}
-        {process.env.NODE_ENV === 'development' && (
-          <ConnectionDebugger isConnected={isConnected} />
-        )}
       </Box>
     </ThemeProvider>
   );
