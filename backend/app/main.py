@@ -58,6 +58,7 @@ try:
     from api.auth import router as auth_router
     from api.diagnostics import router as diagnostics_router
     from api.maps import router as maps_router
+    from api.waypoints import router as waypoints_router
     API_ROUTERS_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"Some API routers not available: {e}")
@@ -142,6 +143,7 @@ if API_ROUTERS_AVAILABLE:
     app.include_router(logs_router, prefix="/api/logs", tags=["logs"])
     app.include_router(diagnostics_router, prefix="/api/diagnostics", tags=["diagnostics"])
     app.include_router(maps_router, prefix="/api/maps", tags=["maps"])
+    app.include_router(waypoints_router, prefix="/api", tags=["waypoints"])
     logger.info("All API routers loaded successfully")
 else:
     logger.warning("API routers not loaded - running in minimal mode")

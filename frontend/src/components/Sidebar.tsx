@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Drawer,
   List,
@@ -9,7 +9,8 @@ import {
   Divider,
   Typography,
   Box,
-  Chip
+  Chip,
+  Collapse
 } from '@mui/material';
 import {
   Dashboard,
@@ -25,7 +26,12 @@ import {
   Storage,
   Memory,
   Edit,
-  MenuBook
+  MenuBook,
+  ManageHistory,
+  FolderOpen,
+  Assignment,
+  ExpandLess,
+  ExpandMore
 } from '@mui/icons-material';
 import { useI18n } from '../i18n/i18n';
 
@@ -43,6 +49,14 @@ interface MenuItem {
   labelKey: string;
   descKey: string;
   category: 'main' | 'monitoring' | 'tools' | 'system';
+  submenu?: SubMenuItem[];
+}
+
+interface SubMenuItem {
+  id: string;
+  icon: React.ReactElement;
+  labelKey: string;
+  descKey: string;
 }
 
 const menuItems: MenuItem[] = [
@@ -81,8 +95,28 @@ const menuItems: MenuItem[] = [
     id: 'map-2d',
     labelKey: 'page.map-2d',
     icon: <Map />,
-    descKey: 'sidebar.map2d.desc',
-    category: 'monitoring'
+    descKey: 'sidebar.map_management.desc',
+    category: 'monitoring',
+    submenu: [
+      {
+        id: 'map-management-status',
+        icon: <ManageHistory />,
+        labelKey: 'page.map-management-status',
+        descKey: 'sidebar.map_management_status.desc'
+      },
+      {
+        id: 'map-management-maps',
+        icon: <FolderOpen />,
+        labelKey: 'page.map-management-maps',
+        descKey: 'sidebar.map_management_maps.desc'
+      },
+      {
+        id: 'map-management-tasks',
+        icon: <Assignment />,
+        labelKey: 'page.map-management-tasks',
+        descKey: 'sidebar.map_management_tasks.desc'
+      }
+    ]
   },
   {
     id: 'map-3d',
@@ -90,13 +124,6 @@ const menuItems: MenuItem[] = [
     icon: <ViewInAr />,
     descKey: 'sidebar.map3d.desc',
     category: 'monitoring'
-  },
-  {
-    id: 'map-editor',
-    labelKey: 'page.map-editor',
-    icon: <Edit />,
-    descKey: 'sidebar.map_editor.desc',
-    category: 'tools'
   },
   {
     id: 'charts',
@@ -170,62 +197,150 @@ const categoryLabelKeys = {
 const Sidebar: React.FC<SidebarProps> = ({ selectedPage, onPageChange, isConnected, open, onClose }) => {
   const { t } = useI18n();
   const drawerWidth = 280;
+  const [expandedSubmenu, setExpandedSubmenu] = useState<string | null>(null);
   
   const renderMenuItems = (category: string) => {
     const items = menuItems.filter(item => item.category === category);
-    
-    return items.map((item) => (
-      <ListItem key={item.id} disablePadding>
-        <ListItemButton
-          selected={selectedPage === item.id}
-          onClick={() => {
-            onPageChange(item.id);
-            onClose(); // Close sidebar when page is selected
-          }}
-          sx={{
-            borderRadius: 1,
-            margin: '2px 8px',
-            color: '#333',
-            backgroundColor: 'transparent',
-            border: '1px solid transparent',
-            '&:hover': {
-              backgroundColor: '#e3f2fd',
-              border: '1px solid #bbdefb',
-              '& .MuiListItemIcon-root': {
-                color: 'primary.main',
-              }
-            },
-            '&.Mui-selected': {
-              backgroundColor: 'primary.main',
-              color: 'white',
-              border: '1px solid primary.main',
-              '&:hover': {
-                backgroundColor: 'primary.dark',
-              },
-              '& .MuiListItemIcon-root': {
-                color: 'white',
-              }
-            },
-            '& .MuiListItemIcon-root': {
-              color: selectedPage === item.id ? 'white' : '#666',
-              transition: 'color 0.2s ease'
-            }
-          }}
-        >
-          <ListItemIcon sx={{ minWidth: 40 }}>
-            {item.icon}
-          </ListItemIcon>
-          <ListItemText
-            primary={t(item.labelKey)}
-            secondary={t(item.descKey)}
-            secondaryTypographyProps={{
-              fontSize: '0.75rem',
-              color: selectedPage === item.id ? 'rgba(255,255,255,0.7)' : 'text.secondary'
-            }}
-          />
-        </ListItemButton>
-      </ListItem>
-    ));
+
+    return items.map((item) => {
+      const hasSubmenu = item.submenu && item.submenu.length > 0;
+      const isExpanded = expandedSubmenu === item.id;
+      const isSubmenuItemSelected = hasSubmenu && item.submenu?.some(subItem => subItem.id === selectedPage);
+      const isSelected = selectedPage === item.id || isSubmenuItemSelected;
+
+      return (
+        <React.Fragment key={item.id}>
+          <ListItem disablePadding>
+            <ListItemButton
+              selected={isSelected}
+              onClick={() => {
+                if (hasSubmenu) {
+                  // For menu items with submenu, only toggle submenu visibility
+                  setExpandedSubmenu(isExpanded ? null : item.id);
+                } else {
+                  // For regular menu items, navigate to page
+                  onPageChange(item.id);
+                  onClose(); // Close sidebar when page is selected
+                }
+              }}
+              sx={{
+                borderRadius: 1,
+                margin: '2px 8px',
+                color: '#333',
+                backgroundColor: 'transparent',
+                border: '1px solid transparent',
+                '&:hover': {
+                  backgroundColor: '#e3f2fd',
+                  border: '1px solid #bbdefb',
+                  '& .MuiListItemIcon-root': {
+                    color: 'primary.main',
+                  }
+                },
+                '&.Mui-selected': {
+                  backgroundColor: 'primary.main',
+                  color: 'white',
+                  border: '1px solid primary.main',
+                  '&:hover': {
+                    backgroundColor: 'primary.dark',
+                  },
+                  '& .MuiListItemIcon-root': {
+                    color: 'white',
+                  }
+                },
+                '& .MuiListItemIcon-root': {
+                  color: isSelected ? 'white' : '#666',
+                  transition: 'color 0.2s ease'
+                }
+              }}
+            >
+              <ListItemIcon sx={{ minWidth: 40 }}>
+                {item.icon}
+              </ListItemIcon>
+              <ListItemText
+                primary={t(item.labelKey)}
+                secondary={t(item.descKey)}
+                secondaryTypographyProps={{
+                  fontSize: '0.75rem',
+                  color: isSelected ? 'rgba(255,255,255,0.7)' : 'text.secondary'
+                }}
+              />
+              {hasSubmenu && (
+                <ListItemIcon sx={{ minWidth: 24 }}>
+                  {isExpanded ? <ExpandLess /> : <ExpandMore />}
+                </ListItemIcon>
+              )}
+            </ListItemButton>
+          </ListItem>
+
+          {/* Submenu */}
+          {hasSubmenu && (
+            <Collapse
+              in={isExpanded}
+              timeout="auto"
+              unmountOnExit
+            >
+              <List component="div" disablePadding>
+                {item.submenu?.map((subItem) => (
+                  <ListItem key={subItem.id} disablePadding>
+                    <ListItemButton
+                      selected={selectedPage === subItem.id}
+                      onClick={() => {
+                        onPageChange(subItem.id);
+                        onClose();
+                      }}
+                      sx={{
+                        borderRadius: 1,
+                        margin: '2px 16px 2px 24px', // Extra left margin for submenu
+                        color: '#333',
+                        backgroundColor: 'transparent',
+                        border: '1px solid transparent',
+                        '&:hover': {
+                          backgroundColor: '#e3f2fd',
+                          border: '1px solid #bbdefb',
+                          '& .MuiListItemIcon-root': {
+                            color: 'primary.main',
+                          }
+                        },
+                        '&.Mui-selected': {
+                          backgroundColor: 'primary.main',
+                          color: 'white',
+                          border: '1px solid primary.main',
+                          '&:hover': {
+                            backgroundColor: 'primary.dark',
+                          },
+                          '& .MuiListItemIcon-root': {
+                            color: 'white',
+                          }
+                        },
+                        '& .MuiListItemIcon-root': {
+                          color: selectedPage === subItem.id ? 'white' : '#666',
+                          transition: 'color 0.2s ease'
+                        }
+                      }}
+                    >
+                      <ListItemIcon sx={{ minWidth: 32 }}>
+                        {subItem.icon}
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={t(subItem.labelKey)}
+                        secondary={t(subItem.descKey)}
+                        primaryTypographyProps={{
+                          fontSize: '0.9rem'
+                        }}
+                        secondaryTypographyProps={{
+                          fontSize: '0.7rem',
+                          color: selectedPage === subItem.id ? 'rgba(255,255,255,0.7)' : 'text.secondary'
+                        }}
+                      />
+                    </ListItemButton>
+                  </ListItem>
+                ))}
+              </List>
+            </Collapse>
+          )}
+        </React.Fragment>
+      );
+    });
   };
 
   return (

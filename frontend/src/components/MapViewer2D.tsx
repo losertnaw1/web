@@ -66,7 +66,7 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
   const maxZoom = 10;
 
   // Fixed canvas settings
-  const canvasWidth = 800;
+  const canvasWidth = 1600;
   const canvasHeight = 600;
   
   // MODIFIED: Calculate base scale and apply zoom
@@ -691,7 +691,7 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
     <Paper sx={{ position: 'relative', overflow: 'hidden', width: canvasWidth, height: canvasHeight }}>
       {/* MODIFIED: Debug info with zoom level */}
       <Box sx={{ position: 'absolute', top: 8, left: 8, zIndex: 2, bgcolor: 'yellow', p: 1 }}>
-        {`DEBUG: ${t('map.info.size', 'Size')} ${mapData ? `${mapData.width}x${mapData.height}` : t('map.viewer.no_data.title')} | Zoom: ${zoomLevel.toFixed(2)}x`}
+        {`${t('map.info.size', 'Size')} ${mapData ? `${mapData.width}x${mapData.height}` : t('map.viewer.no_data.title')} | Zoom: ${zoomLevel.toFixed(2)}x`}
       </Box>
 
       {/* ADDED: Zoom controls */}

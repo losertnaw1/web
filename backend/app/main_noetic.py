@@ -36,6 +36,8 @@ from api.logs import router as logs_router
 from api.auth import router as auth_router
 from api.diagnostics import router as diagnostics_router
 from api.maps import router as maps_router
+from api.waypoints import router as waypoints_router
+from api.tasks import router as tasks_router
 
 # Import WebSocket and other managers
 from websocket.websocket_manager import WebSocketManager
@@ -94,6 +96,8 @@ app.include_router(logs_router, prefix="/api/logs", tags=["logs"])
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(diagnostics_router, prefix="/api/diagnostics", tags=["diagnostics"])
 app.include_router(maps_router, prefix="/api/maps", tags=["maps"])
+app.include_router(waypoints_router, prefix="/api", tags=["waypoints"])
+app.include_router(tasks_router, prefix="/api", tags=["tasks"])
 
 # Serve static files (React frontend)
 frontend_path = Path(__file__).parent.parent.parent / "frontend" / "build"

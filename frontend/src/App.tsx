@@ -16,6 +16,8 @@ import SensorsPage from './pages/SensorsPage';
 import Map2DPage from './pages/Map2DPage';
 import Map3DPage from './pages/Map3DPage';
 import MapEditorPage from './pages/MapEditorPage';
+import MapManagementPage from './pages/MapManagementPage';
+import TaskManagementPage from './pages/TaskManagementPage';
 import ChartsPage from './pages/ChartsPage';
 import DiagnosticsPage from './pages/DiagnosticsPage';
 //import TerminalPage from './pages/TerminalPage';
@@ -204,10 +206,24 @@ function App() {
           />
         );
       case 'map-2d':
+      case 'map-management-status':
         return (
           <Map2DPage
             robotData={robotData}
             sensorData={sensorData}
+            isConnected={isConnected}
+            onCommand={sendCommand}
+          />
+        );
+      case 'map-management-maps':
+        return (
+          <MapManagementPage
+            isConnected={isConnected}
+          />
+        );
+      case 'map-management-tasks':
+        return (
+          <TaskManagementPage
             isConnected={isConnected}
             onCommand={sendCommand}
           />
@@ -364,6 +380,9 @@ function App() {
       'navigation': t('page.navigation'),
       'sensors': t('page.sensors'),
       'map-2d': t('page.map-2d'),
+      'map-management-status': t('page.map-management-status'),
+      'map-management-maps': t('page.map-management-maps'),
+      'map-management-tasks': t('page.map-management-tasks'),
       'map-3d': t('page.map-3d'),
       'charts': t('page.charts'),
       'diagnostics': t('page.diagnostics'),
