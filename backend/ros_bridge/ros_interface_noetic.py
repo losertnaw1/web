@@ -12,9 +12,20 @@ import json
 import time
 import subprocess
 import os
+import logging
+import sys
 from threading import Lock
 from typing import Dict, Any, Optional, Callable
 from pathlib import Path
+
+# Configure Python logging to work alongside rospy
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)],
+    force=True
+)
+bridge_logger = logging.getLogger('ros_bridge')
 
 # ROS1 message imports
 from std_msgs.msg import String, Header
@@ -83,7 +94,6 @@ class ROS1WebBridge:
     
     def init_subscribers(self):
         """Initialize ROS1 subscribers"""
-        
         # Robot pose (AMCL)
         self.amcl_sub = rospy.Subscriber(
             '/amcl_pose',
@@ -91,7 +101,7 @@ class ROS1WebBridge:
             self.amcl_pose_callback,
             queue_size=10
         )
-        
+
         # Odometry
         self.odom_sub = rospy.Subscriber(
             '/odom_from_laser',
@@ -99,7 +109,7 @@ class ROS1WebBridge:
             self.odom_callback,
             queue_size=10
         )
-        
+
         # LiDAR scan
         self.scan_sub = rospy.Subscriber(
             '/scan_forward',
@@ -107,14 +117,14 @@ class ROS1WebBridge:
             self.scan_callback,
             queue_size=5
         )
-        
+
         self.battery_sub = rospy.Subscriber(
             '/battery',
             Battery_msgs,
             self.battery_callback,
             queue_size=10
         )
-        
+
         # Map data - initially subscribe to static map
         self.map_sub = rospy.Subscriber(
             '/map',
@@ -125,7 +135,7 @@ class ROS1WebBridge:
 
         # Store current map topic for dynamic switching
         self.current_map_topic = '/map'
-        
+
         # Diagnostics
         self.diagnostics_sub = rospy.Subscriber(
             '/diagnostics',
@@ -133,8 +143,8 @@ class ROS1WebBridge:
             self.diagnostics_callback,
             queue_size=10
         )
-        
-        rospy.loginfo("ROS1 subscribers initialized")
+
+        bridge_logger.info("ROS bridge subscribers initialized (subscribed to /map)")
     
     def init_publishers(self):
         """Initialize ROS1 publishers"""
@@ -380,7 +390,8 @@ class ROS1WebBridge:
     
     def map_callback(self, msg):
         """Handle map updates"""
-        rospy.loginfo("MAP CALLBACK CALLED! Map size: {}x{}, data length: {}".format(msg.info.width, msg.info.height, len(msg.data)))
+        bridge_logger.info(f"Map received from ROS: {msg.info.width}x{msg.info.height}")
+
         with self.data_lock:
             map_data = {
                 'width': msg.info.width,
@@ -395,10 +406,9 @@ class ROS1WebBridge:
                 'timestamp': time.time(),
                 'frame_id': msg.header.frame_id
             }
-            
+
             self.latest_data['map'] = map_data
             self._trigger_websocket_callback('map', map_data)
-            rospy.loginfo("MAP DATA STORED in latest_data")
     
     def diagnostics_callback(self, msg):
         """Handle diagnostics updates"""
@@ -452,14 +462,12 @@ class ROS1WebBridge:
     def refresh_map_subscription(self):
         """Refresh map subscription to force new map data"""
         try:
-            rospy.loginfo("🗺️ [ROS Bridge] Refreshing map subscription...")
+            bridge_logger.info("Refreshing map subscription...")
 
             # Unsubscribe from current map topic
             if hasattr(self, 'map_sub') and self.map_sub:
                 self.map_sub.unregister()
-                rospy.loginfo("🗺️ [ROS Bridge] Unsubscribed from map topic")
 
-            # Wait a moment
             rospy.sleep(0.1)
 
             # Resubscribe to map topic
@@ -469,16 +477,16 @@ class ROS1WebBridge:
                 self.map_callback,
                 queue_size=1
             )
-            rospy.loginfo("🗺️ [ROS Bridge] Resubscribed to map topic")
 
-            # Clear old map data to force fresh data
+            # Clear old map data
             with self.data_lock:
                 if 'map' in self.latest_data:
                     del self.latest_data['map']
-                    rospy.loginfo("🗺️ [ROS Bridge] Cleared old map data")
+
+            bridge_logger.info("Map subscription refreshed")
 
         except Exception as e:
-            rospy.logerr(f"🗺️ [ROS Bridge] Error refreshing map subscription: {e}")
+            bridge_logger.error(f"Map refresh error: {e}")
             raise
 
     def save_map(self, file_path: str) -> Dict[str, str]:

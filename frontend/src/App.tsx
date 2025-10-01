@@ -17,6 +17,8 @@ import Map2DPage from './pages/Map2DPage';
 import Map3DPage from './pages/Map3DPage';
 import MapEditorPage from './pages/MapEditorPage';
 import MapManagementPage from './pages/MapManagementPage';
+import CreateMapPage from './pages/CreateMapPage';
+import EditMapPage from './pages/EditMapPage';
 import TaskManagementPage from './pages/TaskManagementPage';
 import ChartsPage from './pages/ChartsPage';
 import DiagnosticsPage from './pages/DiagnosticsPage';
@@ -169,6 +171,12 @@ function App() {
 
   // Render current page
   const renderCurrentPage = () => {
+    // Handle dynamic routes first
+    if (selectedPage.startsWith('maps/edit/')) {
+      const mapId = selectedPage.replace('maps/edit/', '');
+      return <EditMapPage key={mapId} mapId={mapId} onNavigate={setSelectedPage} />;
+    }
+    
     switch (selectedPage) {
       case 'dashboard':
         return (
@@ -241,8 +249,11 @@ function App() {
         return (
           <MapEditorPage
             isConnected={isConnected}
+            onNavigate={setSelectedPage}
           />
         );
+      case 'maps/create':
+        return <CreateMapPage onNavigate={setSelectedPage} />;
       case 'charts':
         return (
           <ChartsPage

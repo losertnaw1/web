@@ -1,0 +1,2 @@
+- xem map thì disable giao diện chỉnh sửa đi 
+- Nhấn sửa map nhưng vẫn phải nhập lại tên map? đặt luôn textField là tên map đi

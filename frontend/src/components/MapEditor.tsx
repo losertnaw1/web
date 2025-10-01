@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
+  Alert,
   Box,
+  CircularProgress,
   Paper,
   Typography,
   Button,
@@ -9,27 +11,20 @@ import {
   FormControl,
   InputLabel,
   TextField,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemButton,
   Chip,
   Grid,
   Slider,
-  Alert
+  FormControlLabel,
+  Switch,
 } from '@mui/material';
 import {
   Delete as DeleteIcon,
   Save as SaveIcon,
-  FolderOpen as LoadIcon,
   Clear as ClearIcon,
   Undo as UndoIcon,
   Redo as RedoIcon
 } from '@mui/icons-material';
+import { getApiUrl } from '../config/config';
 
 // Map element types
 type ShapeType = 'line' | 'rectangle' | 'circle';
@@ -57,23 +52,66 @@ interface SavedMap {
   resolution: number;
   created: string;
   modified: string;
+  ros_files?: {
+    yaml_file: string;
+    pgm_file: string;
+    full_path?: string;
+    exported_at?: string;
+    processed_at?: string;
+  };
 }
 
+interface Point2D {
+  x: number;
+  y: number;
+}
+
+interface SelectionRect {
+  topLeft: Point2D;
+  topRight: Point2D;
+  bottomRight: Point2D;
+  bottomLeft: Point2D;
+}
+
+type CornerHandle = 'top-left' | 'top-right' | 'bottom-right' | 'bottom-left';
+
+type RosHandle =
+  | CornerHandle
+  | 'line-start'
+  | 'line-end'
+  | 'line-move'
+  | 'circle-radius'
+  | 'circle-move';
+
+type RosTool = 'rectangle' | 'line' | 'circle';
+
 interface MapEditorProps {
+  initialElements?: MapElement[];
+  width?: number;
+  height?: number;
   onSaveMap?: (map: SavedMap) => void;
   onLoadMap?: (mapId: string) => void;
   savedMaps?: SavedMap[];
+  viewMode?: boolean; // Thêm prop để xác định chế độ xem
+  initialMapData?: SavedMap; // Thêm prop để truyền map data từ ngoài
+  onMapMetadataUpdate?: (map: SavedMap) => void;
 }
 
 const MapEditor: React.FC<MapEditorProps> = ({
+  initialElements = [],
+  width = 800,
+  height = 600,
   onSaveMap,
   onLoadMap,
-  savedMaps = []
+  savedMaps = [],
+  viewMode = false,
+  initialMapData,
+  onMapMetadataUpdate
 }) => {
   // Force component refresh after fixing imports
   // Canvas and drawing state
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [elements, setElements] = useState<MapElement[]>([]);
+  const [elements, setElements] = useState<MapElement[]>(initialElements);
   const [selectedTool, setSelectedTool] = useState<ShapeType>('line');
   const [isDrawing, setIsDrawing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -84,18 +122,39 @@ const MapEditor: React.FC<MapEditorProps> = ({
   const [activeHandle, setActiveHandle] = useState<string | null>(null);
   
   // Map properties
-  const [mapWidth, setMapWidth] = useState(800);
-  const [mapHeight, setMapHeight] = useState(600);
+  const [mapWidth, setMapWidth] = useState(width);
+  const [mapHeight, setMapHeight] = useState(height);
   const [mapResolution, setMapResolution] = useState(0.05); // meters per pixel
   const [gridSize, setGridSize] = useState(20);
   const [showGrid, setShowGrid] = useState(true);
   
   // UI state
-  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
-  const [loadDialogOpen, setLoadDialogOpen] = useState(false);
   const [mapName, setMapName] = useState('');
   const [currentMapId, setCurrentMapId] = useState<string | null>(null);
   
+  const isRosMap = Boolean(initialMapData?.ros_files);
+  const [rosImageData, setRosImageData] = useState<ImageData | null>(null);
+  const [rosRawPixels, setRosRawPixels] = useState<Uint8Array | null>(null);
+  const [rosLoading, setRosLoading] = useState(false);
+  const [rosError, setRosError] = useState<string | null>(null);
+  const [rosSelectionRect, setRosSelectionRect] = useState<SelectionRect | null>(null);
+  const [rosSelectionStart, setRosSelectionStart] = useState<{ x: number; y: number } | null>(null);
+  const [isRosSelecting, setIsRosSelecting] = useState(false);
+  const [rosProcessing, setRosProcessing] = useState(false);
+  const [rosKernelSize, setRosKernelSize] = useState(5);
+  const [rosQuantize, setRosQuantize] = useState(true);
+  const [rosActiveHandle, setRosActiveHandle] = useState<RosHandle | null>(null);
+  const [maskValue, setMaskValue] = useState(0);
+  const [rosSelectionTool, setRosSelectionTool] = useState<RosTool>('rectangle');
+  const [rosSelectionLine, setRosSelectionLine] = useState<{ start: Point2D; end: Point2D } | null>(null);
+  const [rosSelectionCircle, setRosSelectionCircle] = useState<{ center: Point2D; radius: number } | null>(null);
+
+  const handleRosToolChange = useCallback((_: React.SyntheticEvent, value: RosTool | null) => {
+    if (value) {
+      setRosSelectionTool(value);
+    }
+  }, []);
+
   // History for undo/redo
   const [history, setHistory] = useState<MapElement[][]>([[]]);
   const [historyIndex, setHistoryIndex] = useState(0);
@@ -110,6 +169,203 @@ const MapEditor: React.FC<MapEditorProps> = ({
     handle: '#FFFFFF',  // White for handles
     handleBorder: '#000000' // Black border for handles
   }), []);
+
+  const decodeBase64ToUint8Array = useCallback((base64Data: string) => {
+    const binaryString = atob(base64Data);
+    const length = binaryString.length;
+    const bytes = new Uint8Array(length);
+    for (let i = 0; i < length; i += 1) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
+  }, []);
+
+  const createImageDataFromGrayscale = useCallback((pixels: Uint8Array, imgWidth: number, imgHeight: number) => {
+    const rgba = new Uint8ClampedArray(imgWidth * imgHeight * 4);
+    for (let i = 0; i < pixels.length; i += 1) {
+      const value = pixels[i];
+      const baseIndex = i * 4;
+      rgba[baseIndex] = value;
+      rgba[baseIndex + 1] = value;
+      rgba[baseIndex + 2] = value;
+      rgba[baseIndex + 3] = 255;
+    }
+    return new ImageData(rgba, imgWidth, imgHeight);
+  }, []);
+
+  const clamp = useCallback((value: number, minValue: number, maxValue: number) => {
+    return Math.min(Math.max(value, minValue), maxValue);
+  }, []);
+
+  const getCornerPositions = useCallback((rect: SelectionRect) => {
+    return {
+      'top-left': rect.topLeft,
+      'top-right': rect.topRight,
+      'bottom-right': rect.bottomRight,
+      'bottom-left': rect.bottomLeft
+    } as const;
+  }, []);
+
+  const detectCornerHandle = useCallback((rect: SelectionRect, x: number, y: number): CornerHandle | null => {
+    const handles = getCornerPositions(rect);
+    const threshold = 10;
+    for (const [key, point] of Object.entries(handles) as [CornerHandle, Point2D][]) {
+      if (Math.abs(point.x - x) <= threshold && Math.abs(point.y - y) <= threshold) {
+        return key;
+      }
+    }
+    return null;
+  }, [getCornerPositions]);
+
+  const detectLineHandle = useCallback((line: { start: Point2D; end: Point2D }, x: number, y: number): RosHandle | null => {
+    const threshold = 10;
+    const distStart = Math.hypot(x - line.start.x, y - line.start.y);
+    if (distStart <= threshold) return 'line-start';
+    const distEnd = Math.hypot(x - line.end.x, y - line.end.y);
+    if (distEnd <= threshold) return 'line-end';
+    const distanceToLine = Math.abs((line.end.y - line.start.y) * x - (line.end.x - line.start.x) * y + line.end.x * line.start.y - line.end.y * line.start.x) /
+      Math.sqrt(Math.pow(line.end.y - line.start.y, 2) + Math.pow(line.end.x - line.start.x, 2));
+    if (distanceToLine <= threshold && distStart > threshold && distEnd > threshold) {
+      return 'line-move';
+    }
+    return null;
+  }, []);
+
+  const detectCircleHandle = useCallback((circle: { center: Point2D; radius: number }, x: number, y: number): RosHandle | null => {
+    const threshold = 10;
+    const distance = Math.hypot(x - circle.center.x, y - circle.center.y);
+    if (Math.abs(distance - circle.radius) <= threshold) {
+      return 'circle-radius';
+    }
+    if (distance < circle.radius) {
+      return 'circle-move';
+    }
+    return null;
+  }, []);
+
+  const createSelectionFromBounds = useCallback((x1: number, y1: number, x2: number, y2: number): SelectionRect => {
+    const minX = Math.min(x1, x2);
+    const maxX = Math.max(x1, x2);
+    const minY = Math.min(y1, y2);
+    const maxY = Math.max(y1, y2);
+    return {
+      topLeft: { x: minX, y: minY },
+      topRight: { x: maxX, y: minY },
+      bottomRight: { x: maxX, y: maxY },
+      bottomLeft: { x: minX, y: maxY }
+    };
+  }, []);
+
+  const getSelectionBounds = useCallback((rect: SelectionRect) => {
+    const points = [rect.topLeft, rect.topRight, rect.bottomRight, rect.bottomLeft];
+    const xs = points.map(p => p.x);
+    const ys = points.map(p => p.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    return {
+      minX,
+      minY,
+      maxX,
+      maxY,
+      width: maxX - minX,
+      height: maxY - minY
+    };
+  }, []);
+  const lineThickness = 3;
+
+  const getPolygonBounds = useCallback((points: Point2D[]) => {
+    const xs = points.map(p => p.x);
+    const ys = points.map(p => p.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    return {
+      minX,
+      minY,
+      maxX,
+      maxY,
+      width: maxX - minX,
+      height: maxY - minY
+    };
+  }, []);
+
+  const getLinePolygon = useCallback((line: { start: Point2D; end: Point2D }, thickness = lineThickness) => {
+    const dx = line.end.x - line.start.x;
+    const dy = line.end.y - line.start.y;
+    const length = Math.sqrt(dx * dx + dy * dy) || 1;
+    const offsetX = -(dy / length) * (thickness / 2);
+    const offsetY = (dx / length) * (thickness / 2);
+    return [
+      { x: line.start.x + offsetX, y: line.start.y + offsetY },
+      { x: line.end.x + offsetX, y: line.end.y + offsetY },
+      { x: line.end.x - offsetX, y: line.end.y - offsetY },
+      { x: line.start.x - offsetX, y: line.start.y - offsetY }
+    ];
+  }, []);
+
+  const getCirclePolygon = useCallback((circle: { center: Point2D; radius: number }, segments = 64) => {
+    const pts: Point2D[] = [];
+    for (let i = 0; i < segments; i += 1) {
+      const angle = (2 * Math.PI * i) / segments;
+      pts.push({
+        x: circle.center.x + circle.radius * Math.cos(angle),
+        y: circle.center.y + circle.radius * Math.sin(angle)
+      });
+    }
+    return pts;
+  }, []);
+
+  const rosSelectionBounds = useMemo(() => {
+    if (!isRosMap) return null;
+    if (rosSelectionTool === 'rectangle' && rosSelectionRect) {
+      return getSelectionBounds(rosSelectionRect);
+    }
+    if (rosSelectionTool === 'line' && rosSelectionLine) {
+      return getPolygonBounds(getLinePolygon(rosSelectionLine));
+    }
+    if (rosSelectionTool === 'circle' && rosSelectionCircle) {
+      return getPolygonBounds(getCirclePolygon(rosSelectionCircle));
+    }
+    return null;
+  }, [
+    isRosMap,
+    rosSelectionTool,
+    rosSelectionRect,
+    rosSelectionLine,
+    rosSelectionCircle,
+    getSelectionBounds,
+    getPolygonBounds,
+    getLinePolygon,
+    getCirclePolygon
+  ]);
+
+  const hasRosSelection = useMemo(() => {
+    if (!isRosMap) return false;
+    if (rosSelectionTool === 'rectangle') {
+      return !!rosSelectionRect;
+    }
+    if (rosSelectionTool === 'line') {
+      if (!rosSelectionLine) return false;
+      const length = Math.hypot(
+        rosSelectionLine.end.x - rosSelectionLine.start.x,
+        rosSelectionLine.end.y - rosSelectionLine.start.y
+      );
+      return length >= 1;
+    }
+    if (rosSelectionTool === 'circle') {
+      return !!rosSelectionCircle && rosSelectionCircle.radius >= 1;
+    }
+    return false;
+  }, [
+    isRosMap,
+    rosSelectionTool,
+    rosSelectionRect,
+    rosSelectionLine,
+    rosSelectionCircle
+  ]);
 
   // Add to history for undo/redo
   const addToHistory = useCallback((newElements: MapElement[]) => {
@@ -260,6 +516,9 @@ const MapEditor: React.FC<MapEditorProps> = ({
 
   // Draw canvas
   const drawCanvas = useCallback(() => {
+    if (isRosMap) {
+      return;
+    }
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -333,15 +592,608 @@ const MapEditor: React.FC<MapEditorProps> = ({
         drawHandles(ctx, element);
       }
     });
-  }, [elements, mapWidth, mapHeight, gridSize, showGrid, colors, drawHandles]);
+  }, [elements, mapWidth, mapHeight, gridSize, showGrid, colors, drawHandles, isRosMap]);
+
+  const drawRosCanvas = useCallback(() => {
+    if (!isRosMap) {
+      return;
+    }
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    if (rosImageData) {
+      ctx.putImageData(rosImageData, 0, 0);
+    } else {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    if (rosSelectionTool === 'rectangle' && rosSelectionRect) {
+      const handles = getCornerPositions(rosSelectionRect);
+      ctx.save();
+      ctx.strokeStyle = '#FF9800';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(handles['top-left'].x, handles['top-left'].y);
+      ctx.lineTo(handles['top-right'].x, handles['top-right'].y);
+      ctx.lineTo(handles['bottom-right'].x, handles['bottom-right'].y);
+      ctx.lineTo(handles['bottom-left'].x, handles['bottom-left'].y);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.restore();
+
+      const handleSize = 8;
+      (Object.entries(handles) as [CornerHandle, Point2D][]).forEach(([key, point]) => {
+        ctx.save();
+        ctx.fillStyle = rosActiveHandle === key ? '#1976d2' : '#ffffff';
+        ctx.strokeStyle = '#1976d2';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.rect(point.x - handleSize / 2, point.y - handleSize / 2, handleSize, handleSize);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      });
+    }
+
+    if (rosSelectionTool === 'line' && rosSelectionLine) {
+      const { start, end } = rosSelectionLine;
+      ctx.save();
+      ctx.strokeStyle = '#FF9800';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(start.x, start.y);
+      ctx.lineTo(end.x, end.y);
+      ctx.stroke();
+      ctx.restore();
+
+      const handleSize = 8;
+      const handles: [RosHandle, Point2D][] = [
+        ['line-start', start],
+        ['line-end', end]
+      ];
+      handles.forEach(([key, point]) => {
+        ctx.save();
+        ctx.fillStyle = rosActiveHandle === key ? '#1976d2' : '#ffffff';
+        ctx.strokeStyle = '#1976d2';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.rect(point.x - handleSize / 2, point.y - handleSize / 2, handleSize, handleSize);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      });
+    }
+
+    if (rosSelectionTool === 'circle' && rosSelectionCircle) {
+      const { center, radius } = rosSelectionCircle;
+      ctx.save();
+      ctx.strokeStyle = '#FF9800';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.arc(center.x, center.y, radius, 0, 2 * Math.PI);
+      ctx.stroke();
+      ctx.restore();
+
+      const handleSize = 8;
+      const handlePoint: Point2D = { x: center.x + radius, y: center.y };
+      ctx.save();
+      ctx.fillStyle = rosActiveHandle === 'circle-radius' ? '#1976d2' : '#ffffff';
+      ctx.strokeStyle = '#1976d2';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.rect(handlePoint.x - handleSize / 2, handlePoint.y - handleSize / 2, handleSize, handleSize);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+  }, [
+    isRosMap,
+    rosImageData,
+    rosSelectionTool,
+    rosSelectionRect,
+    rosSelectionLine,
+    rosSelectionCircle,
+    getCornerPositions,
+    rosActiveHandle
+  ]);
+
+  // Update elements when initialElements change
+  useEffect(() => {
+    setElements(initialElements);
+    setHistory([initialElements]);
+    setHistoryIndex(0);
+  }, [initialElements]);
+
+  // Set initial values based on props
+  useEffect(() => {
+    setMapWidth(width);
+    setMapHeight(height);
+  }, [width, height]);
+
+  // Auto-set map name when currentMapId changes
+  useEffect(() => {
+    if (currentMapId) {
+      const currentMap = savedMaps.find(m => m.id === currentMapId);
+      if (currentMap && !mapName) {
+        setMapName(currentMap.name);
+      }
+    }
+  }, [currentMapId, savedMaps, mapName]);
+
+  // Load initial map data if provided
+  useEffect(() => {
+    if (initialMapData) {
+      setElements(initialMapData.elements);
+      setMapWidth(initialMapData.width);
+      setMapHeight(initialMapData.height);
+      setMapResolution(initialMapData.resolution);
+      setCurrentMapId(initialMapData.id);
+      setMapName(initialMapData.name);
+      setHistory([initialMapData.elements]);
+      setHistoryIndex(0);
+    }
+  }, [initialMapData]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    if (!isRosMap || !initialMapData?.id) {
+      if (!isCancelled) {
+        setRosImageData(null);
+        setRosRawPixels(null);
+        setRosSelectionRect(null);
+        setRosSelectionStart(null);
+        setRosLoading(false);
+      }
+      return () => {
+        isCancelled = true;
+      };
+    }
+
+    const fetchRosImage = async () => {
+      try {
+        setRosLoading(true);
+        setRosError(null);
+        const response = await fetch(getApiUrl(`/api/maps/${initialMapData.id}/image`));
+        if (!response.ok) {
+          const message = await response.text();
+          throw new Error(message || 'Failed to load ROS map image');
+        }
+        const data = await response.json();
+        if (isCancelled) {
+          return;
+        }
+        const imageInfo = data.image;
+        const rawPixels = decodeBase64ToUint8Array(imageInfo.data);
+        setRosRawPixels(rawPixels);
+        setRosImageData(createImageDataFromGrayscale(rawPixels, imageInfo.width, imageInfo.height));
+        setMapWidth(imageInfo.width);
+        setMapHeight(imageInfo.height);
+        setRosSelectionRect(null);
+        setRosSelectionStart(null);
+      } catch (error) {
+        if (!isCancelled) {
+          setRosError('Không thể tải dữ liệu bản đồ từ ROS: ' + (error as Error).message);
+        }
+      } finally {
+        if (!isCancelled) {
+          setRosLoading(false);
+        }
+      }
+    };
+
+    fetchRosImage();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isRosMap, initialMapData?.id, decodeBase64ToUint8Array, createImageDataFromGrayscale]);
 
   // Update canvas when elements change
   useEffect(() => {
-    drawCanvas();
-  }, [drawCanvas]);
+    if (isRosMap) {
+      drawRosCanvas();
+    } else {
+      drawCanvas();
+    }
+  }, [isRosMap, drawCanvas, drawRosCanvas]);
+
+  const handleRosMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isRosMap || viewMode) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.max(0, Math.min(canvas.width, e.clientX - rect.left));
+    const y = Math.max(0, Math.min(canvas.height, e.clientY - rect.top));
+    const snappedX = Math.floor(x);
+    const snappedY = Math.floor(y);
+
+    if (rosSelectionTool === 'rectangle') {
+      const handle = rosSelectionRect ? detectCornerHandle(rosSelectionRect, snappedX, snappedY) : null;
+      if (handle && rosSelectionRect) {
+        setRosActiveHandle(handle);
+        setIsRosSelecting(false);
+        return;
+      }
+
+      setRosActiveHandle(null);
+      setRosSelectionStart({ x: snappedX, y: snappedY });
+      setRosSelectionRect(createSelectionFromBounds(snappedX, snappedY, snappedX, snappedY));
+      setIsRosSelecting(true);
+      return;
+    }
+
+    if (rosSelectionTool === 'line') {
+      if (rosSelectionLine) {
+        const handle = detectLineHandle(rosSelectionLine, snappedX, snappedY);
+        if (handle) {
+          setRosActiveHandle(handle);
+          setRosSelectionStart({ x: snappedX, y: snappedY });
+          setIsRosSelecting(handle === 'line-start' || handle === 'line-end');
+          return;
+        }
+      }
+      setRosActiveHandle('line-end');
+      const startPoint = { x: snappedX, y: snappedY };
+      setRosSelectionLine({ start: startPoint, end: startPoint });
+      setIsRosSelecting(true);
+      return;
+    }
+
+    if (rosSelectionTool === 'circle') {
+      if (rosSelectionCircle) {
+        const handle = detectCircleHandle(rosSelectionCircle, snappedX, snappedY);
+        if (handle) {
+          setRosActiveHandle(handle);
+          setRosSelectionStart({ x: snappedX, y: snappedY });
+          setIsRosSelecting(handle === 'circle-radius');
+          return;
+        }
+      }
+      setRosActiveHandle('circle-radius');
+      setRosSelectionCircle({ center: { x: snappedX, y: snappedY }, radius: 0 });
+      setRosSelectionStart({ x: snappedX, y: snappedY });
+      setIsRosSelecting(true);
+    }
+  }, [
+    createSelectionFromBounds,
+    detectCornerHandle,
+    detectLineHandle,
+    detectCircleHandle,
+    isRosMap,
+    rosSelectionTool,
+    rosSelectionRect,
+    rosSelectionLine,
+    rosSelectionCircle,
+    viewMode
+  ]);
+
+  const handleRosMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isRosMap) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.max(0, Math.min(canvas.width, e.clientX - rect.left));
+    const y = Math.max(0, Math.min(canvas.height, e.clientY - rect.top));
+
+    const endX = Math.floor(x);
+    const endY = Math.floor(y);
+    const clampedX = clamp(endX, 0, canvas.width);
+    const clampedY = clamp(endY, 0, canvas.height);
+
+    if (rosSelectionTool === 'rectangle') {
+      if (rosActiveHandle) {
+        setRosSelectionRect(prev => {
+          if (!prev) return prev;
+          const updated: SelectionRect = {
+            topLeft: { ...prev.topLeft },
+            topRight: { ...prev.topRight },
+            bottomRight: { ...prev.bottomRight },
+            bottomLeft: { ...prev.bottomLeft }
+          };
+
+          switch (rosActiveHandle) {
+            case 'top-left':
+              updated.topLeft = { x: clampedX, y: clampedY };
+              break;
+            case 'top-right':
+              updated.topRight = { x: clampedX, y: clampedY };
+              break;
+            case 'bottom-right':
+              updated.bottomRight = { x: clampedX, y: clampedY };
+              break;
+            case 'bottom-left':
+              updated.bottomLeft = { x: clampedX, y: clampedY };
+              break;
+          }
+
+          return updated;
+        });
+        return;
+      }
+
+      if (!isRosSelecting || !rosSelectionStart) return;
+      setRosSelectionRect(createSelectionFromBounds(rosSelectionStart.x, rosSelectionStart.y, endX, endY));
+      return;
+    }
+
+    if (rosSelectionTool === 'line') {
+      if (rosActiveHandle && rosSelectionLine) {
+        setRosSelectionLine(prev => {
+          if (!prev) return prev;
+          switch (rosActiveHandle) {
+            case 'line-start':
+              return { start: { x: clampedX, y: clampedY }, end: prev.end };
+            case 'line-end':
+              return { start: prev.start, end: { x: clampedX, y: clampedY } };
+            case 'line-move':
+              if (!rosSelectionStart) return prev;
+              const dx = clampedX - rosSelectionStart.x;
+              const dy = clampedY - rosSelectionStart.y;
+              setRosSelectionStart({ x: clampedX, y: clampedY });
+              return {
+                start: { x: prev.start.x + dx, y: prev.start.y + dy },
+                end: { x: prev.end.x + dx, y: prev.end.y + dy }
+              };
+            default:
+              return prev;
+          }
+        });
+        return;
+      }
+
+      if (isRosSelecting && rosSelectionLine) {
+        setRosSelectionLine(prev => prev ? {
+          start: prev.start,
+          end: { x: clampedX, y: clampedY }
+        } : prev);
+      }
+      return;
+    }
+
+    if (rosSelectionTool === 'circle') {
+      if (rosActiveHandle && rosSelectionCircle) {
+        setRosSelectionCircle(prev => {
+          if (!prev) return prev;
+          if (rosActiveHandle === 'circle-radius') {
+            const radius = Math.max(0, Math.hypot(clampedX - prev.center.x, clampedY - prev.center.y));
+            return { center: prev.center, radius };
+          }
+          if (rosActiveHandle === 'circle-move' && rosSelectionStart) {
+            const dx = clampedX - rosSelectionStart.x;
+            const dy = clampedY - rosSelectionStart.y;
+            setRosSelectionStart({ x: clampedX, y: clampedY });
+            return {
+              center: { x: prev.center.x + dx, y: prev.center.y + dy },
+              radius: prev.radius
+            };
+          }
+          return prev;
+        });
+        return;
+      }
+
+      if (isRosSelecting && rosSelectionCircle && rosSelectionStart) {
+        const radius = Math.max(0, Math.hypot(clampedX - rosSelectionCircle.center.x, clampedY - rosSelectionCircle.center.y));
+        setRosSelectionCircle(prev => prev ? { center: prev.center, radius } : prev);
+      }
+    }
+  }, [
+    clamp,
+    createSelectionFromBounds,
+    isRosMap,
+    rosSelectionTool,
+    rosActiveHandle,
+    rosSelectionStart,
+    rosSelectionRect,
+    rosSelectionLine,
+    rosSelectionCircle,
+    isRosSelecting,
+    detectCornerHandle,
+    detectLineHandle,
+    detectCircleHandle
+  ]);
+
+  const handleRosMouseUp = useCallback(() => {
+    if (!isRosMap) return;
+
+    if (rosActiveHandle) {
+      setRosActiveHandle(null);
+    }
+
+    if (!isRosSelecting) {
+      setRosSelectionStart(null);
+      return;
+    }
+
+    setIsRosSelecting(false);
+    setRosSelectionStart(null);
+
+    if (rosSelectionTool === 'rectangle') {
+      setRosSelectionRect(prev => {
+        if (!prev) return null;
+        const bounds = getSelectionBounds(prev);
+        if (bounds.width < 1 || bounds.height < 1) {
+          return null;
+        }
+        return prev;
+      });
+      return;
+    }
+
+    if (rosSelectionTool === 'line') {
+      setRosSelectionLine(prev => {
+        if (!prev) return null;
+        const length = Math.hypot(prev.end.x - prev.start.x, prev.end.y - prev.start.y);
+        return length < 1 ? null : prev;
+      });
+      return;
+    }
+
+    if (rosSelectionTool === 'circle') {
+      setRosSelectionCircle(prev => {
+        if (!prev) return null;
+        return prev.radius < 1 ? null : prev;
+      });
+    }
+  }, [
+    getSelectionBounds,
+    isRosMap,
+    isRosSelecting,
+    rosActiveHandle,
+    rosSelectionTool
+  ]);
+
+  const clearRosSelection = useCallback(() => {
+    setRosSelectionRect(null);
+    setRosSelectionStart(null);
+    setRosActiveHandle(null);
+    setRosSelectionLine(null);
+    setRosSelectionCircle(null);
+  }, []);
+
+  useEffect(() => {
+    clearRosSelection();
+  }, [rosSelectionTool, clearRosSelection]);
+
+  const applyRosRegion = useCallback(async (action: 'smooth' | 'mask') => {
+    if (!isRosMap || !initialMapData?.id) {
+      return;
+    }
+
+    if (!hasRosSelection) {
+      setRosError('Vui lòng chọn một vùng có kích thước lớn hơn.');
+      return;
+    }
+
+    let polygon: Point2D[] | null = null;
+    let bounds: { minX: number; minY: number; maxX: number; maxY: number; width: number; height: number } | null = null;
+    const payload: Record<string, unknown> = {};
+
+    if (rosSelectionTool === 'rectangle' && rosSelectionRect) {
+      polygon = [
+        rosSelectionRect.topLeft,
+        rosSelectionRect.topRight,
+        rosSelectionRect.bottomRight,
+        rosSelectionRect.bottomLeft
+      ];
+      bounds = getSelectionBounds(rosSelectionRect);
+    } else if (rosSelectionTool === 'line' && rosSelectionLine) {
+      polygon = getLinePolygon(rosSelectionLine, lineThickness);
+      bounds = getPolygonBounds(polygon);
+      payload.shape = 'line';
+      payload.thickness = lineThickness;
+      payload.line = {
+        start: rosSelectionLine.start,
+        end: rosSelectionLine.end
+      };
+    } else if (rosSelectionTool === 'circle' && rosSelectionCircle) {
+      polygon = getCirclePolygon(rosSelectionCircle);
+      bounds = getPolygonBounds(polygon);
+      payload.shape = 'circle';
+      payload.circle = {
+        center: rosSelectionCircle.center,
+        radius: rosSelectionCircle.radius
+      };
+    }
+
+    if (!polygon || !bounds || bounds.width < 1 || bounds.height < 1) {
+      setRosError('Vui lòng chọn một vùng có kích thước lớn hơn.');
+      return;
+    }
+
+    setRosProcessing(true);
+    setRosError(null);
+
+    try {
+      payload.x = Math.round(bounds.minX);
+      payload.y = Math.round(bounds.minY);
+      payload.width = Math.max(1, Math.round(bounds.width));
+      payload.height = Math.max(1, Math.round(bounds.height));
+      payload.points = polygon.map(point => ({
+        x: Math.round(point.x),
+        y: Math.round(point.y)
+      }));
+
+      let endpoint = 'smooth';
+      if (action === 'smooth') {
+        payload.kernel_size = rosKernelSize % 2 === 0 ? rosKernelSize + 1 : rosKernelSize;
+        payload.quantize = rosQuantize;
+      } else {
+        endpoint = 'mask';
+        payload.value = maskValue;
+      }
+
+      const response = await fetch(getApiUrl(`/api/maps/${initialMapData.id}/${endpoint}`), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || 'Region update failed');
+      }
+
+      const data = await response.json();
+
+      if (data.image) {
+        const rawPixels = decodeBase64ToUint8Array(data.image.data);
+        setRosRawPixels(rawPixels);
+        setRosImageData(createImageDataFromGrayscale(rawPixels, data.image.width, data.image.height));
+        setMapWidth(data.image.width);
+        setMapHeight(data.image.height);
+        clearRosSelection();
+      }
+
+      if (data.map) {
+        onMapMetadataUpdate?.(data.map);
+      }
+    } catch (error) {
+      const message = action === 'smooth'
+        ? 'Không thể làm mịn khu vực đã chọn: '
+        : 'Không thể phủ đen khu vực đã chọn: ';
+      setRosError(message + (error as Error).message);
+    } finally {
+      setRosProcessing(false);
+    }
+  }, [
+    clearRosSelection,
+    createImageDataFromGrayscale,
+    decodeBase64ToUint8Array,
+    getSelectionBounds,
+    getPolygonBounds,
+    getLinePolygon,
+    getCirclePolygon,
+    initialMapData?.id,
+    isRosMap,
+    maskValue,
+    onMapMetadataUpdate,
+    rosKernelSize,
+    rosQuantize,
+    hasRosSelection,
+    rosSelectionTool,
+    rosSelectionRect,
+    rosSelectionLine,
+    rosSelectionCircle
+  ]);
 
   // Handle mouse events
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (isRosMap) {
+      handleRosMouseDown(e);
+      return;
+    }
+    if (viewMode) return; // Disable editing in view mode
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -406,6 +1258,11 @@ const MapEditor: React.FC<MapEditorProps> = ({
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (isRosMap) {
+      handleRosMouseMove(e);
+      return;
+    }
+    if (viewMode) return; // Disable editing in view mode
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -523,6 +1380,11 @@ const MapEditor: React.FC<MapEditorProps> = ({
   };
 
   const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (isRosMap) {
+      handleRosMouseUp();
+      return;
+    }
+    if (viewMode) return; // Disable editing in view mode
     if (isDragging) {
       // End dragging
       setIsDragging(false);
@@ -633,79 +1495,116 @@ const MapEditor: React.FC<MapEditorProps> = ({
         <Grid item xs={12}>
           <Paper sx={{ p: 2, mb: 2 }}>
             <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
-              {/* Tool Selection */}
-              <FormControl size="small" sx={{ minWidth: 120 }}>
-                <InputLabel>Drawing Tool</InputLabel>
-                <Select
-                  value={selectedTool}
-                  onChange={(e) => setSelectedTool(e.target.value as ShapeType)}
-                  label="Drawing Tool"
-                >
-                  <MenuItem value="line">📏 Line/Wall</MenuItem>
-                  <MenuItem value="rectangle">⬜ Rectangle</MenuItem>
-                  <MenuItem value="circle">⭕ Circle</MenuItem>
-                </Select>
-              </FormControl>
+              {!isRosMap ? (
+                <>
+                  <FormControl size="small" sx={{ minWidth: 120 }} disabled={viewMode}>
+                    <InputLabel>Drawing Tool</InputLabel>
+                    <Select
+                      value={selectedTool}
+                      onChange={(e) => setSelectedTool(e.target.value as ShapeType)}
+                      label="Drawing Tool"
+                      disabled={viewMode}
+                    >
+                      <MenuItem value="line">📏 Line/Wall</MenuItem>
+                      <MenuItem value="rectangle">⬜ Rectangle</MenuItem>
+                      <MenuItem value="circle">⭕ Circle</MenuItem>
+                    </Select>
+                  </FormControl>
 
-              {/* Action Buttons */}
-              <Button
-                variant="outlined"
-                startIcon={<UndoIcon />}
-                onClick={undo}
-                disabled={historyIndex <= 0}
-                size="small"
-              >
-                Undo
-              </Button>
-              
-              <Button
-                variant="outlined"
-                startIcon={<RedoIcon />}
-                onClick={redo}
-                disabled={historyIndex >= history.length - 1}
-                size="small"
-              >
-                Redo
-              </Button>
+                  <Button
+                    variant="outlined"
+                    startIcon={<UndoIcon />}
+                    onClick={undo}
+                    disabled={historyIndex <= 0 || viewMode}
+                    size="small"
+                  >
+                    Undo
+                  </Button>
 
-              <Button
-                variant="outlined"
-                startIcon={<DeleteIcon />}
-                onClick={deleteSelected}
-                disabled={!selectedElement}
-                color="error"
-                size="small"
-              >
-                Delete
-              </Button>
+                  <Button
+                    variant="outlined"
+                    startIcon={<RedoIcon />}
+                    onClick={redo}
+                    disabled={historyIndex >= history.length - 1 || viewMode}
+                    size="small"
+                  >
+                    Redo
+                  </Button>
 
-              <Button
-                variant="outlined"
-                startIcon={<ClearIcon />}
-                onClick={clearMap}
-                color="warning"
-                size="small"
-              >
-                Clear All
-              </Button>
+                  <Button
+                    variant="outlined"
+                    startIcon={<DeleteIcon />}
+                    onClick={deleteSelected}
+                    disabled={!selectedElement || viewMode}
+                    color="error"
+                    size="small"
+                  >
+                    Delete
+                  </Button>
 
-              {/* Map Actions */}
+                  <Button
+                    variant="outlined"
+                    startIcon={<ClearIcon />}
+                    onClick={clearMap}
+                    color="warning"
+                    size="small"
+                    disabled={viewMode}
+                  >
+                    Clear All
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Chip label="ROS Map" color="primary" size="small" />
+                  <Typography variant="body2" color="text.secondary">
+                    Chế độ chỉnh sửa map từ ROS: chọn vùng trên canvas và xử lý ở bảng công cụ.
+                  </Typography>
+                </>
+              )}
+            </Box>
+
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap', mt: 2 }}>
+              <TextField
+                label="Map Name"
+                value={mapName}
+                onChange={(e) => setMapName(e.target.value)}
+                size="small"
+                sx={{ minWidth: 200 }}
+                disabled={viewMode}
+                placeholder="Enter map name..."
+              />
+
               <Button
                 variant="contained"
                 startIcon={<SaveIcon />}
-                onClick={() => setSaveDialogOpen(true)}
+                onClick={() => {
+                  if (mapName.trim()) {
+                    const mapId = currentMapId || Date.now().toString();
+
+                    const savedMap: SavedMap = {
+                      id: mapId,
+                      name: mapName.trim(),
+                      elements: [...elements],
+                      width: mapWidth,
+                      height: mapHeight,
+                      resolution: mapResolution,
+                      created: currentMapId ? savedMaps.find(m => m.id === currentMapId)?.created || new Date().toISOString() : new Date().toISOString(),
+                      modified: new Date().toISOString(),
+                      ros_files: initialMapData?.ros_files
+                    };
+
+                    onSaveMap?.(savedMap);
+
+                    setCurrentMapId(savedMap.id);
+                    if (!currentMapId) {
+                      setMapName('');
+                    }
+                  }
+                }}
                 size="small"
+                disabled={!mapName.trim() || viewMode}
               >
                 Save Map
-              </Button>
-
-              <Button
-                variant="outlined"
-                startIcon={<LoadIcon />}
-                onClick={() => setLoadDialogOpen(true)}
-                size="small"
-              >
-                Load Map
               </Button>
             </Box>
           </Paper>
@@ -723,7 +1622,8 @@ const MapEditor: React.FC<MapEditorProps> = ({
               onMouseUp={handleMouseUp}
               style={{
                 border: '1px solid #ccc',
-                cursor: isDragging ? 'grabbing' :
+                cursor: viewMode ? 'default' :
+                       isDragging ? 'grabbing' :
                        isResizing ? 'nw-resize' :
                        isDrawing ? 'crosshair' :
                        selectedElement ? 'grab' : 'default',
@@ -737,235 +1637,285 @@ const MapEditor: React.FC<MapEditorProps> = ({
         <Grid item xs={12} md={3}>
           <Paper sx={{ p: 2 }}>
             <Typography variant="h6" gutterBottom>
-              🔧 Properties
+              {isRosMap ? '🧰 ROS Map Tools' : '🔧 Properties'}
             </Typography>
-            
-            {/* Map Settings */}
-            <Box sx={{ mb: 3 }}>
-              <Typography variant="subtitle2" gutterBottom>
-                Map Settings:
-              </Typography>
-              
-              <TextField
-                label="Width (px)"
-                type="number"
-                value={mapWidth}
-                onChange={(e) => setMapWidth(Number(e.target.value))}
-                size="small"
-                fullWidth
-                sx={{ mb: 1 }}
-              />
-              
-              <TextField
-                label="Height (px)"
-                type="number"
-                value={mapHeight}
-                onChange={(e) => setMapHeight(Number(e.target.value))}
-                size="small"
-                fullWidth
-                sx={{ mb: 1 }}
-              />
-              
-              <TextField
-                label="Resolution (m/px)"
-                type="number"
-                inputProps={{ step: 0.01 }}
-                value={mapResolution}
-                onChange={(e) => setMapResolution(Number(e.target.value))}
-                size="small"
-                fullWidth
-                sx={{ mb: 1 }}
-              />
-            </Box>
 
-            {/* Grid Settings */}
-            <Box sx={{ mb: 3 }}>
-              <Typography variant="subtitle2" gutterBottom>
-                Grid Settings:
-              </Typography>
-              
-              <Typography variant="caption">Grid Size: {gridSize}px</Typography>
-              <Slider
-                value={gridSize}
-                onChange={(_, value) => setGridSize(value as number)}
-                min={10}
-                max={50}
-                step={5}
-                size="small"
-              />
-              
-              <Button
-                variant="outlined"
-                size="small"
-                onClick={() => setShowGrid(!showGrid)}
-                fullWidth
-              >
-                {showGrid ? 'Hide Grid' : 'Show Grid'}
-              </Button>
-            </Box>
+            {isRosMap ? (
+              <>
+                {rosError && (
+                  <Alert severity="error" onClose={() => setRosError(null)} sx={{ mb: 2 }}>
+                    {rosError}
+                  </Alert>
+                )}
 
-            {/* Element Info */}
-            <Box sx={{ mb: 3 }}>
-              <Typography variant="subtitle2" gutterBottom>
-                Elements: {elements.length}
-              </Typography>
-              
-              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                <Chip 
-                  label={`Lines: ${elements.filter(e => e.type === 'line').length}`}
-                  size="small"
-                  color="primary"
-                />
-                <Chip 
-                  label={`Rectangles: ${elements.filter(e => e.type === 'rectangle').length}`}
-                  size="small"
-                  color="secondary"
-                />
-                <Chip 
-                  label={`Circles: ${elements.filter(e => e.type === 'circle').length}`}
-                  size="small"
-                  color="success"
-                />
-              </Box>
-            </Box>
+                {rosLoading ? (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <CircularProgress size={20} />
+                    <Typography variant="body2">Đang tải dữ liệu map từ ROS...</Typography>
+                  </Box>
+                ) : (
+                  <>
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Công cụ chọn vùng
+                      </Typography>
+                      <FormControl size="small" sx={{ minWidth: 160 }}>
+                        <InputLabel>Công cụ</InputLabel>
+                        <Select
+                          value={rosSelectionTool}
+                          label="Công cụ"
+                          onChange={(e) => setRosSelectionTool(e.target.value as RosTool)}
+                        >
+                          <MenuItem value="rectangle">Hình chữ nhật</MenuItem>
+                          <MenuItem value="line">Đường thẳng</MenuItem>
+                          <MenuItem value="circle">Hình tròn</MenuItem>
+                        </Select>
+                      </FormControl>
+                      {rosSelectionTool === 'line' && (
+                        <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                          Độ dày đường thẳng: {lineThickness}px
+                        </Typography>
+                      )}
+                    </Box>
 
-            {/* Instructions */}
-            <Box>
-              <Typography variant="subtitle2" gutterBottom>
-                Instructions:
-              </Typography>
-              <Typography variant="caption" component="div">
-                1. Select a drawing tool<br/>
-                2. Click and drag to draw<br/>
-                3. Click elements to select<br/>
-                4. Drag handles to resize/edit<br/>
-                5. Drag borders to move<br/>
-                6. Use toolbar to delete/clear<br/>
-                7. Save your map when done
-              </Typography>
-            </Box>
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Thông tin map
+                      </Typography>
+                      <Typography variant="caption" component="div">
+                        Kích thước: {mapWidth} x {mapHeight} px
+                      </Typography>
+                      {initialMapData?.ros_files?.pgm_file && (
+                        <Typography variant="caption" component="div">
+                          PGM: {initialMapData.ros_files.pgm_file}
+                        </Typography>
+                      )}
+                      {initialMapData?.ros_files?.processed_at && (
+                        <Typography variant="caption" component="div">
+                          Lần xử lý gần nhất: {new Date(initialMapData.ros_files.processed_at).toLocaleString()}
+                        </Typography>
+                      )}
+                    </Box>
+
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Vùng làm mịn
+                      </Typography>
+                      {rosSelectionBounds ? (
+                        <>
+                          <Typography variant="body2">
+                            (x: {Math.round(rosSelectionBounds.minX)}, y: {Math.round(rosSelectionBounds.minY)}) •
+                            w: {Math.round(rosSelectionBounds.width)} px • h: {Math.round(rosSelectionBounds.height)} px
+                          </Typography>
+                          {rosSelectionTool === 'line' && rosSelectionLine && (
+                            <Typography variant="body2" color="text.secondary">
+                              Line: ({Math.round(rosSelectionLine.start.x)}, {Math.round(rosSelectionLine.start.y)}) → ({Math.round(rosSelectionLine.end.x)}, {Math.round(rosSelectionLine.end.y)})
+                            </Typography>
+                          )}
+                          {rosSelectionTool === 'circle' && rosSelectionCircle && (
+                            <Typography variant="body2" color="text.secondary">
+                              Tâm: ({Math.round(rosSelectionCircle.center.x)}, {Math.round(rosSelectionCircle.center.y)}) • R = {Math.round(rosSelectionCircle.radius)} px
+                            </Typography>
+                          )}
+                        </>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">
+                          Kéo chuột trên canvas để chọn vùng cần làm mịn.
+                        </Typography>
+                      )}
+                    </Box>
+
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Tham số xử lý
+                      </Typography>
+                      <Typography variant="caption" component="div">Kernel size: {rosKernelSize}px</Typography>
+                      <Slider
+                        value={rosKernelSize}
+                        onChange={(_, value) => setRosKernelSize(value as number)}
+                        min={3}
+                        max={17}
+                        step={2}
+                        size="small"
+                        disabled={rosProcessing || viewMode}
+                      />
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={rosQuantize}
+                            onChange={(_, checked) => setRosQuantize(checked)}
+                            size="small"
+                            disabled={rosProcessing || viewMode}
+                          />
+                        }
+                        label="Giữ mức giá trị 0 / 205 / 254"
+                      />
+
+                      <FormControl size="small" fullWidth sx={{ mt: 2 }} disabled={rosProcessing || viewMode}>
+                        <InputLabel>Giá trị phủ màu</InputLabel>
+                        <Select
+                          label="Giá trị phủ màu"
+                          value={maskValue}
+                          onChange={(e) => setMaskValue(Number(e.target.value))}
+                        >
+                          <MenuItem value={0}>0 - Occupied (đen)</MenuItem>
+                          <MenuItem value={205}>205 - Unknown (xám)</MenuItem>
+                          <MenuItem value={254}>254 - Free (trắng)</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Box>
+
+                    <Box sx={{ display: 'flex', gap: 1, flexDirection: "column" }}>
+                      <Button
+                        variant="contained"
+                        color="primary"
+                        onClick={() => applyRosRegion('smooth')}
+                        disabled={rosProcessing || rosLoading || !hasRosSelection || viewMode}
+                        startIcon={rosProcessing ? <CircularProgress size={16} color="inherit" /> : undefined}
+                      >
+                        Process
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        onClick={clearRosSelection}
+                        disabled={!hasRosSelection || rosProcessing || viewMode}
+                      >
+                        Xóa vùng chọn
+                      </Button>
+                      <Button
+                        variant="contained"
+                        color="error"
+                        onClick={() => applyRosRegion('mask')}
+                        disabled={rosProcessing || rosLoading || !hasRosSelection || viewMode}
+                        startIcon={rosProcessing ? <CircularProgress size={16} color="inherit" /> : undefined}
+                      >
+                        Phủ màu vùng chọn
+                      </Button>
+                    </Box>
+
+                    {rosProcessing && (
+                      <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                        Đang xử lý vùng đã chọn...
+                      </Typography>
+                    )}
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                {/* Map Settings */}
+                <Box sx={{ mb: 3 }}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Map Settings:
+                  </Typography>
+
+                  <TextField
+                    label="Width (px)"
+                    type="number"
+                    value={mapWidth}
+                    onChange={(e) => setMapWidth(Number(e.target.value))}
+                    size="small"
+                    fullWidth
+                    sx={{ mb: 1 }}
+                    disabled={viewMode}
+                  />
+
+                  <TextField
+                    label="Height (px)"
+                    type="number"
+                    value={mapHeight}
+                    onChange={(e) => setMapHeight(Number(e.target.value))}
+                    size="small"
+                    fullWidth
+                    sx={{ mb: 1 }}
+                    disabled={viewMode}
+                  />
+
+                  <TextField
+                    label="Resolution (m/px)"
+                    type="number"
+                    inputProps={{ step: 0.01 }}
+                    value={mapResolution}
+                    onChange={(e) => setMapResolution(Number(e.target.value))}
+                    size="small"
+                    fullWidth
+                    sx={{ mb: 1 }}
+                    disabled={viewMode}
+                  />
+                </Box>
+
+                {/* Grid Settings */}
+                <Box sx={{ mb: 3 }}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Grid Settings:
+                  </Typography>
+
+                  <Typography variant="caption">Grid Size: {gridSize}px</Typography>
+                  <Slider
+                    value={gridSize}
+                    onChange={(_, value) => setGridSize(value as number)}
+                    min={10}
+                    max={50}
+                    step={5}
+                    size="small"
+                  />
+
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => setShowGrid(!showGrid)}
+                    fullWidth
+                  >
+                    {showGrid ? 'Hide Grid' : 'Show Grid'}
+                  </Button>
+                </Box>
+
+                {/* Element Info */}
+                <Box sx={{ mb: 3 }}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Elements: {elements.length}
+                  </Typography>
+
+                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                    <Chip 
+                      label={`Lines: ${elements.filter(e => e.type === 'line').length}`}
+                      size="small"
+                      color="primary"
+                    />
+                    <Chip 
+                      label={`Rectangles: ${elements.filter(e => e.type === 'rectangle').length}`}
+                      size="small"
+                      color="secondary"
+                    />
+                    <Chip 
+                      label={`Circles: ${elements.filter(e => e.type === 'circle').length}`}
+                      size="small"
+                      color="success"
+                    />
+                  </Box>
+                </Box>
+
+                {/* Instructions */}
+                <Box>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Instructions:
+                  </Typography>
+                  <Typography variant="caption" component="div">
+                    1. Select a drawing tool<br/>
+                    2. Click and drag to draw<br/>
+                    3. Click elements to select<br/>
+                    4. Drag handles to resize/edit<br/>
+                    5. Drag borders to move<br/>
+                    6. Use toolbar to delete/clear<br/>
+                    7. Save your map when done
+                  </Typography>
+                </Box>
+              </>
+            )}
           </Paper>
         </Grid>
       </Grid>
 
-      {/* Save Dialog */}
-      <Dialog
-        open={saveDialogOpen}
-        onClose={() => setSaveDialogOpen(false)}
-        disableRestoreFocus
-        keepMounted={false}
-      >
-        <DialogTitle>💾 Save Map</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus={saveDialogOpen}
-            margin="dense"
-            label="Map Name"
-            fullWidth
-            variant="outlined"
-            value={mapName}
-            onChange={(e) => setMapName(e.target.value)}
-            tabIndex={saveDialogOpen ? 0 : -1}
-          />
-          <Alert severity="info" sx={{ mt: 2 }}>
-            This map will be saved locally and sent to the backend for ROS2 conversion.
-          </Alert>
-        </DialogContent>
-        <DialogActions>
-          <Button
-            onClick={() => setSaveDialogOpen(false)}
-            tabIndex={saveDialogOpen ? 0 : -1}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={() => {
-              if (mapName.trim()) {
-                const savedMap: SavedMap = {
-                  id: currentMapId || Date.now().toString(),
-                  name: mapName,
-                  elements: [...elements],
-                  width: mapWidth,
-                  height: mapHeight,
-                  resolution: mapResolution,
-                  created: currentMapId ? savedMaps.find(m => m.id === currentMapId)?.created || new Date().toISOString() : new Date().toISOString(),
-                  modified: new Date().toISOString()
-                };
-
-                onSaveMap?.(savedMap);
-                setCurrentMapId(savedMap.id);
-                setSaveDialogOpen(false);
-                setMapName('');
-              }
-            }}
-            variant="contained"
-            disabled={!mapName.trim()}
-            tabIndex={saveDialogOpen ? 0 : -1}
-          >
-            Save
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Load Dialog */}
-      <Dialog
-        open={loadDialogOpen}
-        onClose={() => setLoadDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
-        disableRestoreFocus
-        keepMounted={false}
-      >
-        <DialogTitle>📂 Load Map</DialogTitle>
-        <DialogContent>
-          <List>
-            {savedMaps.map((map) => (
-              <ListItem key={map.id} disablePadding>
-                <ListItemButton
-                  onClick={() => {
-                    // Load map data
-                    setElements(map.elements);
-                    setMapWidth(map.width);
-                    setMapHeight(map.height);
-                    setMapResolution(map.resolution);
-                    setCurrentMapId(map.id);
-                    setMapName(map.name);
-
-                    // Reset history
-                    setHistory([map.elements]);
-                    setHistoryIndex(0);
-
-                    onLoadMap?.(map.id);
-                    setLoadDialogOpen(false);
-                  }}
-                  tabIndex={loadDialogOpen ? 0 : -1}
-                >
-                  <ListItemText
-                    primary={map.name}
-                    secondary={`${map.elements.length} elements • Modified: ${new Date(map.modified).toLocaleDateString()}`}
-                  />
-                </ListItemButton>
-              </ListItem>
-            ))}
-            {savedMaps.length === 0 && (
-              <ListItem>
-                <ListItemText
-                  primary="No saved maps"
-                  secondary="Create and save a map to see it here"
-                />
-              </ListItem>
-            )}
-          </List>
-        </DialogContent>
-        <DialogActions>
-          <Button
-            onClick={() => setLoadDialogOpen(false)}
-            tabIndex={loadDialogOpen ? 0 : -1}
-          >
-            Close
-          </Button>
-        </DialogActions>
-      </Dialog>
     </Box>
   );
 };

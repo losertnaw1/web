@@ -271,6 +271,31 @@ async def delete_map(map_id: str):
         if not map_data:
             raise HTTPException(status_code=404, detail="Map not found")
         
+        # Remove exported files if they exist
+        if hasattr(map_data, 'ros_files') and map_data.ros_files:
+            ros_files = map_data.ros_files
+            # Remove .yaml file
+            if ros_files.get('yaml_file'):
+                yaml_path = Path("data/ros1_maps") / ros_files['yaml_file']
+                if yaml_path.exists():
+                    yaml_path.unlink()
+                    logger.info(f"Deleted yaml file: {yaml_path}")
+            
+            # Remove .pgm file  
+            if ros_files.get('pgm_file'):
+                pgm_path = Path("data/ros1_maps") / ros_files['pgm_file']
+                if pgm_path.exists():
+                    pgm_path.unlink()
+                    logger.info(f"Deleted pgm file: {pgm_path}")
+                    
+            # Remove any .png file with same base name
+            if ros_files.get('yaml_file'):
+                base_name = ros_files['yaml_file'].replace('.yaml', '')
+                png_path = Path("data/ros1_maps") / f"{base_name}.png"
+                if png_path.exists():
+                    png_path.unlink()
+                    logger.info(f"Deleted png file: {png_path}")
+        
         # Remove from list
         maps = [m for m in maps if m.id != map_id]
         save_maps_to_file(maps)

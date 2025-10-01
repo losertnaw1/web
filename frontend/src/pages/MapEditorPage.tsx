@@ -8,7 +8,6 @@ import {
   Tab,
   Paper
 } from '@mui/material';
-import MapEditor from '../components/MapEditor';
 
 // Types
 interface MapElement {
@@ -38,9 +37,10 @@ interface SavedMap {
 
 interface MapEditorPageProps {
   isConnected: boolean;
+  onNavigate?: (page: string) => void;
 }
 
-const MapEditorPage: React.FC<MapEditorPageProps> = ({ isConnected }) => {
+const MapEditorPage: React.FC<MapEditorPageProps> = ({ isConnected, onNavigate }) => {
   const [savedMaps, setSavedMaps] = useState<SavedMap[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,8 +51,8 @@ const MapEditorPage: React.FC<MapEditorPageProps> = ({ isConnected }) => {
   const loadSavedMaps = async () => {
     try {
       setLoading(true);
-      console.log('🔍 Loading maps from: /api/maps/maps');
-      const response = await fetch('/api/maps/maps');
+      console.log('🔍 Loading maps from: /api/maps');
+      const response = await fetch('/api/maps');
 
       console.log('📡 Response status:', response.status, response.statusText);
 
@@ -77,70 +77,13 @@ const MapEditorPage: React.FC<MapEditorPageProps> = ({ isConnected }) => {
     loadSavedMaps();
   }, []);
 
-  // Save map to backend
-  const handleSaveMap = async (map: SavedMap) => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const response = await fetch('/api/maps/maps', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(map),
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to save map: ${response.statusText}`);
-      }
-      
-      const savedMap = await response.json();
-      
-      // Update local state
-      setSavedMaps(prev => {
-        const existingIndex = prev.findIndex(m => m.id === savedMap.id);
-        if (existingIndex >= 0) {
-          // Update existing
-          const updated = [...prev];
-          updated[existingIndex] = savedMap;
-          return updated;
-        } else {
-          // Add new
-          return [...prev, savedMap];
-        }
-      });
-      
-      setSuccess(`Map "${map.name}" saved successfully!`);
-      
-    } catch (err) {
-      console.error('Error saving map:', err);
-      setError(err instanceof Error ? err.message : 'Failed to save map');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Load map (just for logging, actual loading is handled by MapEditor)
-  const handleLoadMap = async (mapId: string) => {
-    try {
-      const map = savedMaps.find(m => m.id === mapId);
-      if (map) {
-        setSuccess(`Map "${map.name}" loaded successfully!`);
-      }
-    } catch (err) {
-      console.error('Error loading map:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load map');
-    }
-  };
-
   // Publish map to ROS2
   const handlePublishToROS2 = async (mapId: string) => {
     try {
       setLoading(true);
       setError(null);
       
-      const response = await fetch(`/api/maps/maps/${mapId}/publish`, {
+      const response = await fetch(`/api/maps/${mapId}/publish`, {
         method: 'POST',
       });
       
@@ -165,7 +108,7 @@ const MapEditorPage: React.FC<MapEditorPageProps> = ({ isConnected }) => {
       setLoading(true);
       setError(null);
       
-      const response = await fetch(`/api/maps/maps/${mapId}`, {
+      const response = await fetch(`/api/maps/${mapId}`, {
         method: 'DELETE',
       });
       
@@ -216,11 +159,78 @@ const MapEditorPage: React.FC<MapEditorPageProps> = ({ isConnected }) => {
 
       {/* Tab Content */}
       {tabValue === 0 && (
-        <MapEditor
-          onSaveMap={handleSaveMap}
-          onLoadMap={handleLoadMap}
-          savedMaps={savedMaps}
-        />
+        <Paper sx={{ p: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            🎨 Map Management
+          </Typography>
+          
+          <Box sx={{ mb: 3 }}>
+            <Button
+              variant="contained"
+              onClick={() => onNavigate?.('maps/create')}
+              sx={{ mr: 2 }}
+            >
+              ➕ Create New Map
+            </Button>
+          </Box>
+
+          {/* Saved Maps List */}
+          <Typography variant="h6" gutterBottom>
+            📋 Saved Maps
+          </Typography>
+          
+          {savedMaps.length === 0 ? (
+            <Alert severity="info">
+              No maps saved yet. Create your first map using the "Create New Map" button.
+            </Alert>
+          ) : (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              {savedMaps.map((map) => (
+                <Paper key={map.id} sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Box>
+                    <Typography variant="subtitle1" fontWeight="bold">
+                      {map.name}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {map.elements.length} elements • {map.width}×{map.height}px • {map.resolution}m/px
+                    </Typography>
+                    <br />
+                    <Typography variant="caption" color="text.secondary">
+                      Modified: {new Date(map.modified).toLocaleString()}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Button
+                      variant="outlined"
+                      onClick={() => onNavigate?.(`maps/edit/${map.id}`)}
+                      size="small"
+                    >
+                      ✏️ Edit
+                    </Button>
+                    <Button
+                      onClick={() => handlePublishToROS2(map.id)}
+                      disabled={!isConnected || loading}
+                      size="small"
+                      variant="contained"
+                      color="primary"
+                    >
+                      🚀 Publish to ROS2
+                    </Button>
+                    <Button
+                      onClick={() => handleDeleteMap(map.id)}
+                      disabled={loading}
+                      size="small"
+                      variant="outlined"
+                      color="error"
+                    >
+                      🗑️ Delete
+                    </Button>
+                  </Box>
+                </Paper>
+              ))}
+            </Box>
+          )}
+        </Paper>
       )}
 
       {tabValue === 1 && (

@@ -73,18 +73,6 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
   const baseMapScale = Math.min(canvasWidth / (mapData?.width || 100), canvasHeight / (mapData?.height || 100));
   const mapScale = baseMapScale * zoomLevel;
 
-  // Debug log on component mount - NO CHANGE
-  console.log('🗺️ MapViewer2D mounted!');
-  console.log('📊 MapData:', mapData);
-  console.log('🤖 RobotPose:', robotPose);
-
-  // Test alert - NO CHANGE
-  if (mapData) {
-    console.log(`🔍 Map size: ${mapData.width}x${mapData.height}`);
-  } else {
-    console.log('⚠️ No map data received!');
-  }
-
   // MODIFIED: Convert world coordinates to canvas coordinates with zoom and pan
   const worldToCanvas = (worldX: number, worldY: number) => {
     if (!mapData) return { x: 0, y: 0 };
@@ -124,13 +112,6 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
     // Convert to world coordinates
     const worldX = clampedMapX * mapData.resolution + mapData.origin.x;
     const worldY = clampedDataMapY * mapData.resolution + mapData.origin.y;
-
-    console.log(`🗺️ Canvas to World:`, {
-      canvas: { x: canvasX, y: canvasY },
-      map: { x: mapX, y: mapY },
-      dataMapY: dataMapY,
-      world: { x: worldX, y: worldY }
-    });
 
     return { x: worldX, y: worldY };
   };
@@ -260,9 +241,6 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-
-    // Debug map size
-    console.log(`🗺️ Map size: ${mapData.width}x${mapData.height}, Scale: ${mapScale.toFixed(3)}, Zoom: ${zoomLevel.toFixed(2)}`);
 
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -596,14 +574,6 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
       if (index >= 0 && index < mapData.data.length) {
         const cellValue = mapData.data[index];
 
-        console.log(`🔍 Cell validation:`, {
-          dataMapCoords: { x: dataMapX, y: dataMapY },
-          index: index,
-          cellValue: cellValue,
-          mapSize: { width: mapData.width, height: mapData.height },
-          dataLength: mapData.data.length
-        });
-
         if (cellValue > 50) {
           return { valid: false, reason: `Goal in obstacle (cell value: ${cellValue})` };
         }
@@ -664,15 +634,6 @@ const MapViewer2D: React.FC<MapViewer2DProps> = ({
       return;
     }
   };
-
-  // Debug logs - NO CHANGE (lines 485-500)
-  console.log('🎨 MapViewer2D RENDERING NOW!');
-  console.log('📊 MapData:', mapData ? {
-    width: mapData.width,
-    height: mapData.height,
-    resolution: mapData.resolution,
-    origin: mapData.origin
-  } : 'NO MAP');
   console.log('🤖 RobotPose:', robotPose ? {
     x: robotPose.x,
     y: robotPose.y,
