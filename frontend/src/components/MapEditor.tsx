@@ -16,13 +16,26 @@ import {
   Slider,
   FormControlLabel,
   Switch,
+  Tabs,
+  Tab,
+  IconButton,
+  List,
+  ListItem,
+  ListItemText,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import {
   Delete as DeleteIcon,
   Save as SaveIcon,
   Clear as ClearIcon,
   Undo as UndoIcon,
-  Redo as RedoIcon
+  Redo as RedoIcon,
+  Edit as EditIcon,
+  RoomOutlined as WaypointIcon,
+  RouteOutlined as PathIcon
 } from '@mui/icons-material';
 import { getApiUrl } from '../config/config';
 
@@ -43,6 +56,26 @@ interface MapElement {
   selected: boolean;
 }
 
+interface Waypoint {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  z: number;
+  orientation: number; // yaw in radians
+  description?: string;
+}
+
+interface Path {
+  id: string;
+  name?: string;
+  type: 'direct' | 'winding';
+  startWaypointId: string;
+  endWaypointId: string;
+  intermediatePoints?: Array<{x: number; y: number}>; // For winding paths
+  orientation?: number; // Final orientation for winding paths
+}
+
 interface SavedMap {
   id: string;
   name: string;
@@ -52,6 +85,8 @@ interface SavedMap {
   resolution: number;
   created: string;
   modified: string;
+  waypoints?: Waypoint[];
+  paths?: Path[];
   ros_files?: {
     yaml_file: string;
     pgm_file: string;
@@ -131,6 +166,31 @@ const MapEditor: React.FC<MapEditorProps> = ({
   // UI state
   const [mapName, setMapName] = useState('');
   const [currentMapId, setCurrentMapId] = useState<string | null>(null);
+
+  // Tab navigation state
+  const [activeTab, setActiveTab] = useState<'edit' | 'waypoint' | 'path'>('edit');
+
+  // Waypoints and paths state
+  const [waypoints, setWaypoints] = useState<Waypoint[]>([]);
+  const [paths, setPaths] = useState<Path[]>([]);
+  const [selectedWaypoint, setSelectedWaypoint] = useState<string | null>(null);
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [waypointDialogOpen, setWaypointDialogOpen] = useState(false);
+  const [pathDialogOpen, setPathDialogOpen] = useState(false);
+  const [newWaypointData, setNewWaypointData] = useState<{
+    x: number;
+    y: number;
+    z: number;
+    orientation: number;
+    name: string;
+    description: string;
+  } | null>(null);
+  const [newPathData, setNewPathData] = useState<{
+    type: 'direct' | 'winding';
+    startWaypointId: string;
+    endWaypointId: string;
+    name: string;
+  } | null>(null);
   
   const isRosMap = Boolean(initialMapData?.ros_files);
   const [rosImageData, setRosImageData] = useState<ImageData | null>(null);
@@ -702,6 +762,82 @@ const MapEditor: React.FC<MapEditorProps> = ({
     rosActiveHandle
   ]);
 
+  // Draw waypoints and paths overlay
+  const drawWaypointsAndPaths = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Draw paths first (behind waypoints)
+    paths.forEach((path) => {
+      const startWp = waypoints.find(wp => wp.id === path.startWaypointId);
+      const endWp = waypoints.find(wp => wp.id === path.endWaypointId);
+
+      if (startWp && endWp) {
+        ctx.strokeStyle = path.id === selectedPath ? '#FF5722' : '#2196F3';
+        ctx.lineWidth = path.id === selectedPath ? 3 : 2;
+        ctx.setLineDash([5, 5]);
+
+        ctx.beginPath();
+        ctx.moveTo(startWp.x, startWp.y);
+        ctx.lineTo(endWp.x, endWp.y);
+        ctx.stroke();
+
+        ctx.setLineDash([]);
+
+        // Draw arrow at end
+        const angle = Math.atan2(endWp.y - startWp.y, endWp.x - startWp.x);
+        const arrowLength = 10;
+        ctx.beginPath();
+        ctx.moveTo(endWp.x, endWp.y);
+        ctx.lineTo(
+          endWp.x - arrowLength * Math.cos(angle - Math.PI / 6),
+          endWp.y - arrowLength * Math.sin(angle - Math.PI / 6)
+        );
+        ctx.moveTo(endWp.x, endWp.y);
+        ctx.lineTo(
+          endWp.x - arrowLength * Math.cos(angle + Math.PI / 6),
+          endWp.y - arrowLength * Math.sin(angle + Math.PI / 6)
+        );
+        ctx.stroke();
+      }
+    });
+
+    // Draw waypoints
+    waypoints.forEach((wp) => {
+      const isSelected = wp.id === selectedWaypoint;
+
+      // Draw circle
+      ctx.fillStyle = isSelected ? '#FF5722' : '#4CAF50';
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 2;
+
+      ctx.beginPath();
+      ctx.arc(wp.x, wp.y, 8, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.stroke();
+
+      // Draw orientation arrow
+      const arrowLength = 15;
+      ctx.strokeStyle = isSelected ? '#FF5722' : '#4CAF50';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(wp.x, wp.y);
+      ctx.lineTo(
+        wp.x + arrowLength * Math.cos(wp.orientation),
+        wp.y + arrowLength * Math.sin(wp.orientation)
+      );
+      ctx.stroke();
+
+      // Draw name
+      ctx.fillStyle = '#000000';
+      ctx.font = '12px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(wp.name, wp.x, wp.y - 15);
+    });
+  }, [waypoints, paths, selectedWaypoint, selectedPath]);
+
   // Update elements when initialElements change
   useEffect(() => {
     setElements(initialElements);
@@ -801,7 +937,12 @@ const MapEditor: React.FC<MapEditorProps> = ({
     } else {
       drawCanvas();
     }
-  }, [isRosMap, drawCanvas, drawRosCanvas]);
+
+    // Draw waypoints and paths overlay for waypoint/path tabs
+    if (activeTab === 'waypoint' || activeTab === 'path') {
+      drawWaypointsAndPaths();
+    }
+  }, [isRosMap, drawCanvas, drawRosCanvas, activeTab, drawWaypointsAndPaths]);
 
   const handleRosMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!isRosMap || viewMode) return;
@@ -1062,6 +1203,14 @@ const MapEditor: React.FC<MapEditorProps> = ({
   useEffect(() => {
     clearRosSelection();
   }, [rosSelectionTool, clearRosSelection]);
+
+  // Load waypoints and paths when map loads
+  useEffect(() => {
+    if (initialMapData) {
+      setWaypoints(initialMapData.waypoints || []);
+      setPaths(initialMapData.paths || []);
+    }
+  }, [initialMapData]);
 
   const applyRosRegion = useCallback(async (action: 'smooth' | 'mask') => {
     if (!isRosMap || !initialMapData?.id) {
@@ -1477,6 +1626,74 @@ const MapEditor: React.FC<MapEditorProps> = ({
     }
   };
 
+  // Waypoint and Path functions
+  const handleWaypointCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    // Check if ROS map and pixel is Free (254)
+    if (isRosMap && rosRawPixels) {
+      const pixelIndex = Math.floor(y) * mapWidth + Math.floor(x);
+      const pixelValue = rosRawPixels[pixelIndex];
+
+      if (pixelValue !== 254) {
+        alert('Chỉ có thể thêm waypoint vào vùng trắng (Free space - giá trị 254)!');
+        return;
+      }
+    }
+
+    // Open dialog with pre-filled coordinates
+    setNewWaypointData({
+      x: Math.round(x),
+      y: Math.round(y),
+      z: 0,
+      orientation: 0,
+      name: `Waypoint ${waypoints.length + 1}`,
+      description: ''
+    });
+    setWaypointDialogOpen(true);
+  };
+
+  const handleSaveWaypoint = () => {
+    if (!newWaypointData) return;
+
+    const newWaypoint: Waypoint = {
+      id: Date.now().toString(),
+      ...newWaypointData
+    };
+
+    setWaypoints([...waypoints, newWaypoint]);
+    setWaypointDialogOpen(false);
+    setNewWaypointData(null);
+  };
+
+  const handleDeleteWaypoint = (id: string) => {
+    setWaypoints(waypoints.filter(wp => wp.id !== id));
+    // Also delete paths that use this waypoint
+    setPaths(paths.filter(p => p.startWaypointId !== id && p.endWaypointId !== id));
+  };
+
+  const handleSavePath = () => {
+    if (!newPathData) return;
+
+    const newPath: Path = {
+      id: Date.now().toString(),
+      ...newPathData
+    };
+
+    setPaths([...paths, newPath]);
+    setPathDialogOpen(false);
+    setNewPathData(null);
+  };
+
+  const handleDeletePath = (id: string) => {
+    setPaths(paths.filter(p => p.id !== id));
+  };
+
   const redo = () => {
     if (historyIndex < history.length - 1) {
       setHistoryIndex(historyIndex + 1);
@@ -1590,6 +1807,8 @@ const MapEditor: React.FC<MapEditorProps> = ({
                       resolution: mapResolution,
                       created: currentMapId ? savedMaps.find(m => m.id === currentMapId)?.created || new Date().toISOString() : new Date().toISOString(),
                       modified: new Date().toISOString(),
+                      waypoints: waypoints.length > 0 ? waypoints : undefined,
+                      paths: paths.length > 0 ? paths : undefined,
                       ros_files: initialMapData?.ros_files
                     };
 
@@ -1610,31 +1829,61 @@ const MapEditor: React.FC<MapEditorProps> = ({
           </Paper>
         </Grid>
 
-        {/* Canvas Area */}
-        <Grid item xs={12} md={9}>
-          <Paper sx={{ p: 1 }}>
-            <canvas
-              ref={canvasRef}
-              width={mapWidth}
-              height={mapHeight}
-              onMouseDown={handleMouseDown}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
-              style={{
-                border: '1px solid #ccc',
-                cursor: viewMode ? 'default' :
-                       isDragging ? 'grabbing' :
-                       isResizing ? 'nw-resize' :
-                       isDrawing ? 'crosshair' :
-                       selectedElement ? 'grab' : 'default',
-                display: 'block'
-              }}
-            />
+        {/* Tab Navigation */}
+        <Grid item xs={12}>
+          <Paper sx={{ borderBottom: 1, borderColor: 'divider' }}>
+            <Tabs
+              value={activeTab}
+              onChange={(_, newValue) => setActiveTab(newValue)}
+              variant="fullWidth"
+            >
+              <Tab
+                icon={<EditIcon />}
+                label="Sửa map"
+                value="edit"
+              />
+              <Tab
+                icon={<WaypointIcon />}
+                label="Tạo waypoint"
+                value="waypoint"
+              />
+              <Tab
+                icon={<PathIcon />}
+                label="Add path"
+                value="path"
+              />
+            </Tabs>
           </Paper>
         </Grid>
 
-        {/* Properties Panel */}
-        <Grid item xs={12} md={3}>
+        {/* Content based on active tab */}
+        {activeTab === 'edit' && (
+          <>
+            {/* Canvas Area */}
+            <Grid item xs={12} md={9}>
+              <Paper sx={{ p: 1 }}>
+                <canvas
+                  ref={canvasRef}
+                  width={mapWidth}
+                  height={mapHeight}
+                  onMouseDown={handleMouseDown}
+                  onMouseMove={handleMouseMove}
+                  onMouseUp={handleMouseUp}
+                  style={{
+                    border: '1px solid #ccc',
+                    cursor: viewMode ? 'default' :
+                           isDragging ? 'grabbing' :
+                           isResizing ? 'nw-resize' :
+                           isDrawing ? 'crosshair' :
+                           selectedElement ? 'grab' : 'default',
+                    display: 'block'
+                  }}
+                />
+              </Paper>
+            </Grid>
+
+            {/* Properties Panel */}
+            <Grid item xs={12} md={3}>
           <Paper sx={{ p: 2 }}>
             <Typography variant="h6" gutterBottom>
               {isRosMap ? '🧰 ROS Map Tools' : '🔧 Properties'}
@@ -1914,10 +2163,309 @@ const MapEditor: React.FC<MapEditorProps> = ({
             )}
           </Paper>
         </Grid>
+          </>
+        )}
+
+        {/* Waypoint Tab Content */}
+        {activeTab === 'waypoint' && (
+          <>
+            {/* Canvas for waypoint display */}
+            <Grid item xs={12} md={9}>
+              <Paper sx={{ p: 1 }}>
+                <canvas
+                  ref={canvasRef}
+                  width={mapWidth}
+                  height={mapHeight}
+                  onClick={handleWaypointCanvasClick}
+                  style={{
+                    border: '1px solid #ccc',
+                    cursor: 'crosshair',
+                    display: 'block'
+                  }}
+                />
+              </Paper>
+            </Grid>
+
+            {/* Waypoint Panel */}
+            <Grid item xs={12} md={3}>
+              <Paper sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column' }}>
+                <Typography variant="h6" gutterBottom>
+                  📍 Waypoints
+                </Typography>
+
+                <Box sx={{ flex: 1, overflowY: 'auto', mb: 2 }}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Danh sách Waypoints ({waypoints.length})
+                  </Typography>
+                  <List dense>
+                    {waypoints.map((wp) => (
+                      <ListItem
+                        key={wp.id}
+                        selected={selectedWaypoint === wp.id}
+                        sx={{
+                          border: 1,
+                          borderColor: 'divider',
+                          borderRadius: 1,
+                          mb: 1,
+                          bgcolor: selectedWaypoint === wp.id ? 'action.selected' : 'background.paper'
+                        }}
+                      >
+                        <ListItemText
+                          primary={wp.name}
+                          secondary={`x: ${wp.x.toFixed(1)}, y: ${wp.y.toFixed(1)}`}
+                        />
+                        <Box>
+                          <IconButton
+                            size="small"
+                            edge="end"
+                            onClick={() => setSelectedWaypoint(wp.id)}
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            edge="end"
+                            onClick={() => handleDeleteWaypoint(wp.id)}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
+                      </ListItem>
+                    ))}
+                  </List>
+                </Box>
+
+                <Typography variant="caption" color="text.secondary">
+                  Click vào vùng trắng (Free) trên map để thêm waypoint
+                </Typography>
+              </Paper>
+            </Grid>
+          </>
+        )}
+
+        {/* Path Tab Content */}
+        {activeTab === 'path' && (
+          <>
+            {/* Canvas for path display */}
+            <Grid item xs={12} md={9}>
+              <Paper sx={{ p: 1 }}>
+                <canvas
+                  ref={canvasRef}
+                  width={mapWidth}
+                  height={mapHeight}
+                  style={{
+                    border: '1px solid #ccc',
+                    cursor: 'default',
+                    display: 'block'
+                  }}
+                />
+              </Paper>
+            </Grid>
+
+            {/* Path Panel */}
+            <Grid item xs={12} md={3}>
+              <Paper sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column' }}>
+                <Typography variant="h6" gutterBottom>
+                  🛤️ Paths
+                </Typography>
+
+                <Button
+                  variant="contained"
+                  startIcon={<PathIcon />}
+                  size="small"
+                  fullWidth
+                  sx={{ mb: 2 }}
+                  disabled={waypoints.length < 2}
+                  onClick={() => {
+                    setNewPathData({
+                      type: 'direct',
+                      startWaypointId: waypoints[0]?.id || '',
+                      endWaypointId: waypoints[1]?.id || '',
+                      name: `Path ${paths.length + 1}`
+                    });
+                    setPathDialogOpen(true);
+                  }}
+                >
+                  Add Path
+                </Button>
+
+                <Box sx={{ flex: 1, overflowY: 'auto', mb: 2 }}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Danh sách Paths ({paths.length})
+                  </Typography>
+                  <List dense>
+                    {paths.map((path) => (
+                      <ListItem
+                        key={path.id}
+                        selected={selectedPath === path.id}
+                        sx={{
+                          border: 1,
+                          borderColor: 'divider',
+                          borderRadius: 1,
+                          mb: 1,
+                          bgcolor: selectedPath === path.id ? 'action.selected' : 'background.paper'
+                        }}
+                      >
+                        <ListItemText
+                          primary={path.name || `Path ${path.id.slice(0, 8)}`}
+                          secondary={`Type: ${path.type}`}
+                        />
+                        <Box>
+                          <IconButton
+                            size="small"
+                            edge="end"
+                            onClick={() => setSelectedPath(path.id)}
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            edge="end"
+                            onClick={() => handleDeletePath(path.id)}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
+                      </ListItem>
+                    ))}
+                  </List>
+                </Box>
+
+                <Typography variant="caption" color="text.secondary">
+                  {waypoints.length < 2 ? 'Cần ít nhất 2 waypoints để tạo path' : 'Nhấn Add Path để tạo đường đi mới'}
+                </Typography>
+              </Paper>
+            </Grid>
+          </>
+        )}
       </Grid>
+
+      {/* Waypoint Dialog */}
+      <Dialog open={waypointDialogOpen} onClose={() => setWaypointDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Thêm Waypoint</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+            <TextField
+              label="Tên waypoint"
+              value={newWaypointData?.name || ''}
+              onChange={(e) => setNewWaypointData(prev => prev ? { ...prev, name: e.target.value } : null)}
+              fullWidth
+              size="small"
+            />
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <TextField
+                label="X"
+                type="number"
+                value={newWaypointData?.x || 0}
+                onChange={(e) => setNewWaypointData(prev => prev ? { ...prev, x: Number(e.target.value) } : null)}
+                size="small"
+                disabled
+              />
+              <TextField
+                label="Y"
+                type="number"
+                value={newWaypointData?.y || 0}
+                onChange={(e) => setNewWaypointData(prev => prev ? { ...prev, y: Number(e.target.value) } : null)}
+                size="small"
+                disabled
+              />
+              <TextField
+                label="Z"
+                type="number"
+                value={newWaypointData?.z || 0}
+                onChange={(e) => setNewWaypointData(prev => prev ? { ...prev, z: Number(e.target.value) } : null)}
+                size="small"
+              />
+            </Box>
+            <TextField
+              label="Orientation (radians)"
+              type="number"
+              inputProps={{ step: 0.1 }}
+              value={newWaypointData?.orientation || 0}
+              onChange={(e) => setNewWaypointData(prev => prev ? { ...prev, orientation: Number(e.target.value) } : null)}
+              size="small"
+              fullWidth
+            />
+            <TextField
+              label="Mô tả"
+              value={newWaypointData?.description || ''}
+              onChange={(e) => setNewWaypointData(prev => prev ? { ...prev, description: e.target.value } : null)}
+              multiline
+              rows={3}
+              fullWidth
+              size="small"
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setWaypointDialogOpen(false)}>Hủy</Button>
+          <Button onClick={handleSaveWaypoint} variant="contained">Lưu</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Path Dialog */}
+      <Dialog open={pathDialogOpen} onClose={() => setPathDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Thêm Path</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+            <TextField
+              label="Tên path"
+              value={newPathData?.name || ''}
+              onChange={(e) => setNewPathData(prev => prev ? { ...prev, name: e.target.value } : null)}
+              fullWidth
+              size="small"
+            />
+            <FormControl size="small" fullWidth>
+              <InputLabel>Loại path</InputLabel>
+              <Select
+                value={newPathData?.type || 'direct'}
+                label="Loại path"
+                onChange={(e) => setNewPathData(prev => prev ? { ...prev, type: e.target.value as 'direct' | 'winding' } : null)}
+              >
+                <MenuItem value="direct">Direct</MenuItem>
+                <MenuItem value="winding">Winding</MenuItem>
+              </Select>
+            </FormControl>
+            <FormControl size="small" fullWidth>
+              <InputLabel>Điểm bắt đầu</InputLabel>
+              <Select
+                value={newPathData?.startWaypointId || ''}
+                label="Điểm bắt đầu"
+                onChange={(e) => setNewPathData(prev => prev ? { ...prev, startWaypointId: e.target.value } : null)}
+              >
+                {waypoints.map(wp => (
+                  <MenuItem key={wp.id} value={wp.id}>{wp.name}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl size="small" fullWidth>
+              <InputLabel>Điểm kết thúc</InputLabel>
+              <Select
+                value={newPathData?.endWaypointId || ''}
+                label="Điểm kết thúc"
+                onChange={(e) => setNewPathData(prev => prev ? { ...prev, endWaypointId: e.target.value } : null)}
+              >
+                {waypoints.map(wp => (
+                  <MenuItem key={wp.id} value={wp.id}>{wp.name}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            {newPathData?.type === 'winding' && (
+              <Typography variant="caption" color="text.secondary">
+                Path Winding sẽ xác định hướng của điểm cuối ngay từ đầu để đi thẳng tới điểm cuối dễ dàng hơn.
+              </Typography>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPathDialogOpen(false)}>Hủy</Button>
+          <Button onClick={handleSavePath} variant="contained">Lưu</Button>
+        </DialogActions>
+      </Dialog>
 
     </Box>
   );
 };
+
 
 export default MapEditor;

@@ -31,6 +31,24 @@ class MapElement(BaseModel):
     color: str
     selected: bool = False
 
+class Waypoint(BaseModel):
+    id: str
+    name: str
+    x: float
+    y: float
+    z: float
+    orientation: float  # yaw in radians
+    description: Optional[str] = None
+
+class Path(BaseModel):
+    id: str
+    name: Optional[str] = None
+    type: str  # 'direct' or 'winding'
+    startWaypointId: str
+    endWaypointId: str
+    intermediatePoints: Optional[List[Dict[str, float]]] = None  # For winding paths
+    orientation: Optional[float] = None  # Final orientation for winding paths
+
 class SavedMap(BaseModel):
     id: str
     name: str
@@ -40,6 +58,8 @@ class SavedMap(BaseModel):
     resolution: float  # meters per pixel
     created: str
     modified: str
+    waypoints: Optional[List[Waypoint]] = None
+    paths: Optional[List[Path]] = None
 
 class ROS2OccupancyGrid(BaseModel):
     width: int

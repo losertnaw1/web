@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
+import yaml
 
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
@@ -926,19 +927,21 @@ class ROS1MapElement(BaseModel):
 class ROS1Waypoint(BaseModel):
     id: str
     name: str
-    description: Optional[str] = None
     x: float
     y: float
     z: float = 0.0
-    yaw: float = 0.0
+    orientation: float = 0.0  # yaw in radians (đồng bộ với frontend)
+    description: Optional[str] = None
 
 
 class ROS1Path(BaseModel):
     id: str
-    name: str
+    name: Optional[str] = None
     type: str  # 'direct', 'winding'
-    waypoint_ids: List[str]
-    intermediate_points: Optional[List[Dict[str, float]]] = None
+    startWaypointId: str  # Đồng bộ với frontend
+    endWaypointId: str    # Đồng bộ với frontend
+    intermediatePoints: Optional[List[Dict[str, float]]] = None  # For winding paths
+    orientation: Optional[float] = None  # Final orientation for winding paths
     description: Optional[str] = None
 
 
@@ -952,8 +955,8 @@ class ROS1SavedMap(BaseModel):
     created: str
     modified: str
     ros_files: Optional[Dict[str, Any]] = None  # Store info about .yaml and .pgm files
-    waypoints: List[ROS1Waypoint] = []
-    paths: List[ROS1Path] = []
+    waypoints: Optional[List[ROS1Waypoint]] = None  # Đồng bộ với frontend
+    paths: Optional[List[ROS1Path]] = None  # Đồng bộ với frontend
 
 
 class SmoothRegionRequest(BaseModel):
@@ -1451,7 +1454,24 @@ async def deploy_map_to_ros(map_id: str):
 
         shutil.copy2(source_yaml, target_yaml)
         shutil.copy2(source_pgm, target_pgm)
-        
+
+        # Export waypoints and paths to YAML file for ROS to use
+        if map_data.waypoints or map_data.paths:
+            waypoints_yaml_file = target_dir / f"{map_data.ros_files['yaml_file'].replace('.yaml', '_waypoints.yaml')}"
+
+            waypoints_data = {
+                'waypoints': [wp.dict() for wp in (map_data.waypoints or [])],
+                'paths': [p.dict() for p in (map_data.paths or [])]
+            }
+
+            # Write waypoints/paths to YAML
+            try:
+                with open(waypoints_yaml_file, 'w') as f:
+                    yaml.dump(waypoints_data, f, default_flow_style=False)
+                logger.info(f"📍 Exported {len(map_data.waypoints or [])} waypoints and {len(map_data.paths or [])} paths to {waypoints_yaml_file}")
+            except Exception as yaml_error:
+                logger.warning(f"Could not export waypoints/paths to YAML: {yaml_error}")
+
         now_iso = datetime.now().isoformat()
         map_data.modified = now_iso
         if map_data.ros_files is None:
