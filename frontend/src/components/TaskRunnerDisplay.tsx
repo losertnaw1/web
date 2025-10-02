@@ -36,6 +36,8 @@ interface TaskAction {
   parameters: Record<string, any>;
   description?: string;
   loopId?: string;
+  trueBranchActions?: TaskAction[];
+  falseBranchActions?: TaskAction[];
 }
 
 interface TaskSequence {
@@ -86,6 +88,19 @@ const TaskRunnerDisplay: React.FC<TaskRunnerDisplayProps> = ({
     }
   };
 
+  const mapOperatorLabel = (operator: string) => {
+    const operatorMap: Record<string, string> = {
+      less_than: 'nhỏ hơn',
+      greater_than: 'lớn hơn',
+      equal: 'bằng',
+      not_equal: 'khác',
+      less_than_or_equal: '≤',
+      greater_than_or_equal: '≥'
+    };
+
+    return operatorMap[operator] || operator;
+  };
+
   const formatActionDescription = (action: TaskAction) => {
     switch (action.type) {
       case 'move_to_point':
@@ -94,8 +109,21 @@ const TaskRunnerDisplay: React.FC<TaskRunnerDisplayProps> = ({
         return `Chờ: ${action.parameters.duration}s`;
       case 'loop_start':
         return `Vòng lặp: ${action.parameters.conditionType}`;
-      case 'condition_check':
-        return `Kiểm tra: ${action.parameters.sensorType}`;
+      case 'condition_check': {
+        const target = action.parameters.target || action.parameters.sensorType || 'giá trị';
+        const operator = action.parameters.operator ? mapOperatorLabel(action.parameters.operator) : '';
+        const value = action.parameters.value ?? '';
+        const trueCount = action.trueBranchActions?.length ?? 0;
+        const falseCount = action.falseBranchActions?.length ?? 0;
+        const branchInfo = [
+          trueCount > 0 ? `Đúng: ${trueCount}` : null,
+          falseCount > 0 ? `Sai: ${falseCount}` : null
+        ]
+          .filter(Boolean)
+          .join(' | ');
+
+        return `Kiểm tra: ${target}${operator ? ` ${operator}` : ''} ${value}${branchInfo ? ` (${branchInfo})` : ''}`;
+      }
       case 'custom_action':
         return `Lệnh: ${action.parameters.command}`;
       default:

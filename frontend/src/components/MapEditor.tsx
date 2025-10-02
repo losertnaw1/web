@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import {
   Alert,
   Box,
@@ -74,6 +74,7 @@ interface Path {
   endWaypointId: string;
   intermediatePoints?: Array<{x: number; y: number}>; // For winding paths
   orientation?: number; // Final orientation for winding paths
+  description?: string;
 }
 
 interface SavedMap {
@@ -130,9 +131,14 @@ interface MapEditorProps {
   viewMode?: boolean; // Thêm prop để xác định chế độ xem
   initialMapData?: SavedMap; // Thêm prop để truyền map data từ ngoài
   onMapMetadataUpdate?: (map: SavedMap) => void;
+  showSaveButton?: boolean;
 }
 
-const MapEditor: React.FC<MapEditorProps> = ({
+export interface MapEditorHandle {
+  triggerSaveMap: () => void;
+}
+
+const MapEditor = forwardRef<MapEditorHandle, MapEditorProps>(({ 
   initialElements = [],
   width = 800,
   height = 600,
@@ -141,8 +147,9 @@ const MapEditor: React.FC<MapEditorProps> = ({
   savedMaps = [],
   viewMode = false,
   initialMapData,
-  onMapMetadataUpdate
-}) => {
+  onMapMetadataUpdate,
+  showSaveButton = true
+}, ref) => {
   // Force component refresh after fixing imports
   // Canvas and drawing state
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -177,6 +184,8 @@ const MapEditor: React.FC<MapEditorProps> = ({
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [waypointDialogOpen, setWaypointDialogOpen] = useState(false);
   const [pathDialogOpen, setPathDialogOpen] = useState(false);
+  const [editingWaypointId, setEditingWaypointId] = useState<string | null>(null);
+  const [editingPathId, setEditingPathId] = useState<string | null>(null);
   const [newWaypointData, setNewWaypointData] = useState<{
     x: number;
     y: number;
@@ -190,8 +199,28 @@ const MapEditor: React.FC<MapEditorProps> = ({
     startWaypointId: string;
     endWaypointId: string;
     name: string;
+    orientation?: number;
+    description?: string;
+    intermediatePoints?: Array<{x: number; y: number}>;
   } | null>(null);
   
+  const handleSelectMenuClose = useCallback(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      const activeElement = document.activeElement as HTMLElement | null;
+      if (!activeElement) {
+        return;
+      }
+
+      if (activeElement.closest('[aria-hidden="true"]') && typeof activeElement.blur === 'function') {
+        activeElement.blur();
+      }
+    });
+  }, []);
+
   const isRosMap = Boolean(initialMapData?.ros_files);
   const [rosImageData, setRosImageData] = useState<ImageData | null>(null);
   const [rosRawPixels, setRosRawPixels] = useState<Uint8Array | null>(null);
@@ -1619,6 +1648,44 @@ const MapEditor: React.FC<MapEditorProps> = ({
     }
   };
 
+  const handleMapSave = () => {
+    if (viewMode) return;
+
+    if (!mapName.trim()) {
+      alert('Vui lòng nhập tên map trước khi lưu.');
+      return;
+    }
+
+    const mapId = currentMapId || Date.now().toString();
+
+    const savedMap: SavedMap = {
+      id: mapId,
+      name: mapName.trim(),
+      elements: [...elements],
+      width: mapWidth,
+      height: mapHeight,
+      resolution: mapResolution,
+      created: currentMapId
+        ? savedMaps.find(m => m.id === currentMapId)?.created || new Date().toISOString()
+        : new Date().toISOString(),
+      modified: new Date().toISOString(),
+      waypoints: waypoints.length > 0 ? waypoints : undefined,
+      paths: paths.length > 0 ? paths : undefined,
+      ros_files: initialMapData?.ros_files
+    };
+
+    onSaveMap?.(savedMap);
+    setCurrentMapId(savedMap.id);
+
+    if (!currentMapId) {
+      setMapName('');
+    }
+  };
+
+  useImperativeHandle(ref, () => ({
+    triggerSaveMap: handleMapSave
+  }));
+
   const undo = () => {
     if (historyIndex > 0) {
       setHistoryIndex(historyIndex - 1);
@@ -1627,6 +1694,12 @@ const MapEditor: React.FC<MapEditorProps> = ({
   };
 
   // Waypoint and Path functions
+  const closeWaypointDialog = () => {
+    setWaypointDialogOpen(false);
+    setNewWaypointData(null);
+    setEditingWaypointId(null);
+  };
+
   const handleWaypointCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -1647,6 +1720,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
     }
 
     // Open dialog with pre-filled coordinates
+    setEditingWaypointId(null);
     setNewWaypointData({
       x: Math.round(x),
       y: Math.round(y),
@@ -1660,38 +1734,121 @@ const MapEditor: React.FC<MapEditorProps> = ({
 
   const handleSaveWaypoint = () => {
     if (!newWaypointData) return;
-
-    const newWaypoint: Waypoint = {
-      id: Date.now().toString(),
-      ...newWaypointData
-    };
-
-    setWaypoints([...waypoints, newWaypoint]);
-    setWaypointDialogOpen(false);
-    setNewWaypointData(null);
+    if (editingWaypointId) {
+      setWaypoints(prev => prev.map(wp => (
+        wp.id === editingWaypointId ? {
+          ...wp,
+          ...newWaypointData,
+          description: newWaypointData.description || undefined
+        } : wp
+      )));
+      setSelectedWaypoint(editingWaypointId);
+    } else {
+      const newId = Date.now().toString();
+      const newWaypoint: Waypoint = {
+        id: newId,
+        ...newWaypointData,
+        description: newWaypointData.description || undefined
+      };
+      setWaypoints(prev => [...prev, newWaypoint]);
+      setSelectedWaypoint(newId);
+    }
+    closeWaypointDialog();
   };
 
   const handleDeleteWaypoint = (id: string) => {
     setWaypoints(waypoints.filter(wp => wp.id !== id));
     // Also delete paths that use this waypoint
     setPaths(paths.filter(p => p.startWaypointId !== id && p.endWaypointId !== id));
+    if (selectedWaypoint === id) {
+      setSelectedWaypoint(null);
+    }
+    if (editingWaypointId === id) {
+      closeWaypointDialog();
+    }
+  };
+
+  const handleEditWaypoint = (waypoint: Waypoint) => {
+    setEditingWaypointId(waypoint.id);
+    setNewWaypointData({
+      x: waypoint.x,
+      y: waypoint.y,
+      z: waypoint.z,
+      orientation: waypoint.orientation,
+      name: waypoint.name,
+      description: waypoint.description || ''
+    });
+    setSelectedWaypoint(waypoint.id);
+    setWaypointDialogOpen(true);
+  };
+
+  const closePathDialog = () => {
+    setPathDialogOpen(false);
+    setNewPathData(null);
+    setEditingPathId(null);
   };
 
   const handleSavePath = () => {
     if (!newPathData) return;
 
-    const newPath: Path = {
-      id: Date.now().toString(),
-      ...newPathData
-    };
+    if (!newPathData.startWaypointId || !newPathData.endWaypointId) {
+      alert('Vui lòng chọn waypoint bắt đầu và kết thúc.');
+      return;
+    }
 
-    setPaths([...paths, newPath]);
-    setPathDialogOpen(false);
-    setNewPathData(null);
+    if (editingPathId) {
+      setPaths(prev => prev.map(path => (
+        path.id === editingPathId
+          ? {
+              ...path,
+              ...newPathData,
+              orientation: newPathData.type === 'winding' ? newPathData.orientation : undefined,
+              intermediatePoints: newPathData.type === 'winding' ? newPathData.intermediatePoints : undefined,
+              description: newPathData.description || undefined
+            }
+          : path
+      )));
+      setSelectedPath(editingPathId);
+    } else {
+      const newId = Date.now().toString();
+      const newPath: Path = {
+        id: newId,
+        ...newPathData,
+        orientation: newPathData.type === 'winding' ? (newPathData.orientation ?? 0) : undefined,
+        intermediatePoints: newPathData.type === 'winding' ? newPathData.intermediatePoints : undefined,
+        description: newPathData.description || undefined
+      };
+
+      setPaths(prev => [...prev, newPath]);
+      setSelectedPath(newId);
+    }
+
+    closePathDialog();
   };
 
   const handleDeletePath = (id: string) => {
     setPaths(paths.filter(p => p.id !== id));
+    if (selectedPath === id) {
+      setSelectedPath(null);
+    }
+    if (editingPathId === id) {
+      closePathDialog();
+    }
+  };
+
+  const handleEditPath = (path: Path) => {
+    setEditingPathId(path.id);
+    setNewPathData({
+      type: path.type,
+      startWaypointId: path.startWaypointId,
+      endWaypointId: path.endWaypointId,
+      name: path.name || '',
+      orientation: path.orientation,
+      description: path.description,
+      intermediatePoints: path.intermediatePoints
+    });
+    setSelectedPath(path.id);
+    setPathDialogOpen(true);
   };
 
   const redo = () => {
@@ -1721,6 +1878,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
                       onChange={(e) => setSelectedTool(e.target.value as ShapeType)}
                       label="Drawing Tool"
                       disabled={viewMode}
+                      MenuProps={{ onClose: () => handleSelectMenuClose() }}
                     >
                       <MenuItem value="line">📏 Line/Wall</MenuItem>
                       <MenuItem value="rectangle">⬜ Rectangle</MenuItem>
@@ -1791,40 +1949,17 @@ const MapEditor: React.FC<MapEditorProps> = ({
                 placeholder="Enter map name..."
               />
 
-              <Button
-                variant="contained"
-                startIcon={<SaveIcon />}
-                onClick={() => {
-                  if (mapName.trim()) {
-                    const mapId = currentMapId || Date.now().toString();
-
-                    const savedMap: SavedMap = {
-                      id: mapId,
-                      name: mapName.trim(),
-                      elements: [...elements],
-                      width: mapWidth,
-                      height: mapHeight,
-                      resolution: mapResolution,
-                      created: currentMapId ? savedMaps.find(m => m.id === currentMapId)?.created || new Date().toISOString() : new Date().toISOString(),
-                      modified: new Date().toISOString(),
-                      waypoints: waypoints.length > 0 ? waypoints : undefined,
-                      paths: paths.length > 0 ? paths : undefined,
-                      ros_files: initialMapData?.ros_files
-                    };
-
-                    onSaveMap?.(savedMap);
-
-                    setCurrentMapId(savedMap.id);
-                    if (!currentMapId) {
-                      setMapName('');
-                    }
-                  }
-                }}
-                size="small"
-                disabled={!mapName.trim() || viewMode}
-              >
-                Save Map
-              </Button>
+              {showSaveButton && (
+                <Button
+                  variant="contained"
+                  startIcon={<SaveIcon />}
+                  onClick={handleMapSave}
+                  size="small"
+                  disabled={!mapName.trim() || viewMode}
+                >
+                  Save Map
+                </Button>
+              )}
             </Box>
           </Paper>
         </Grid>
@@ -1914,6 +2049,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
                           value={rosSelectionTool}
                           label="Công cụ"
                           onChange={(e) => setRosSelectionTool(e.target.value as RosTool)}
+                          MenuProps={{ onClose: () => handleSelectMenuClose() }}
                         >
                           <MenuItem value="rectangle">Hình chữ nhật</MenuItem>
                           <MenuItem value="line">Đường thẳng</MenuItem>
@@ -2006,6 +2142,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
                           label="Giá trị phủ màu"
                           value={maskValue}
                           onChange={(e) => setMaskValue(Number(e.target.value))}
+                          MenuProps={{ onClose: () => handleSelectMenuClose() }}
                         >
                           <MenuItem value={0}>0 - Occupied (đen)</MenuItem>
                           <MenuItem value={205}>205 - Unknown (xám)</MenuItem>
@@ -2201,7 +2338,9 @@ const MapEditor: React.FC<MapEditorProps> = ({
                     {waypoints.map((wp) => (
                       <ListItem
                         key={wp.id}
+                        button
                         selected={selectedWaypoint === wp.id}
+                        onClick={() => setSelectedWaypoint(wp.id)}
                         sx={{
                           border: 1,
                           borderColor: 'divider',
@@ -2218,14 +2357,20 @@ const MapEditor: React.FC<MapEditorProps> = ({
                           <IconButton
                             size="small"
                             edge="end"
-                            onClick={() => setSelectedWaypoint(wp.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditWaypoint(wp);
+                            }}
                           >
                             <EditIcon fontSize="small" />
                           </IconButton>
                           <IconButton
                             size="small"
                             edge="end"
-                            onClick={() => handleDeleteWaypoint(wp.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteWaypoint(wp.id);
+                            }}
                           >
                             <DeleteIcon fontSize="small" />
                           </IconButton>
@@ -2277,11 +2422,15 @@ const MapEditor: React.FC<MapEditorProps> = ({
                   sx={{ mb: 2 }}
                   disabled={waypoints.length < 2}
                   onClick={() => {
+                    setEditingPathId(null);
                     setNewPathData({
                       type: 'direct',
                       startWaypointId: waypoints[0]?.id || '',
                       endWaypointId: waypoints[1]?.id || '',
-                      name: `Path ${paths.length + 1}`
+                      name: `Path ${paths.length + 1}`,
+                      orientation: 0,
+                      description: '',
+                      intermediatePoints: []
                     });
                     setPathDialogOpen(true);
                   }}
@@ -2294,40 +2443,56 @@ const MapEditor: React.FC<MapEditorProps> = ({
                     Danh sách Paths ({paths.length})
                   </Typography>
                   <List dense>
-                    {paths.map((path) => (
-                      <ListItem
-                        key={path.id}
-                        selected={selectedPath === path.id}
-                        sx={{
-                          border: 1,
-                          borderColor: 'divider',
-                          borderRadius: 1,
-                          mb: 1,
-                          bgcolor: selectedPath === path.id ? 'action.selected' : 'background.paper'
-                        }}
-                      >
-                        <ListItemText
-                          primary={path.name || `Path ${path.id.slice(0, 8)}`}
-                          secondary={`Type: ${path.type}`}
-                        />
-                        <Box>
-                          <IconButton
-                            size="small"
-                            edge="end"
-                            onClick={() => setSelectedPath(path.id)}
-                          >
-                            <EditIcon fontSize="small" />
-                          </IconButton>
-                          <IconButton
-                            size="small"
-                            edge="end"
-                            onClick={() => handleDeletePath(path.id)}
-                          >
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
-                        </Box>
-                      </ListItem>
-                    ))}
+                    {paths.map((path) => {
+                      const startWaypoint = waypoints.find(wp => wp.id === path.startWaypointId);
+                      const endWaypoint = waypoints.find(wp => wp.id === path.endWaypointId);
+                      const summary = startWaypoint && endWaypoint
+                        ? `${startWaypoint.name} → ${endWaypoint.name}`
+                        : `Type: ${path.type}`;
+
+                      return (
+                        <ListItem
+                          key={path.id}
+                          button
+                          selected={selectedPath === path.id}
+                          onClick={() => setSelectedPath(path.id)}
+                          sx={{
+                            border: 1,
+                            borderColor: 'divider',
+                            borderRadius: 1,
+                            mb: 1,
+                            bgcolor: selectedPath === path.id ? 'action.selected' : 'background.paper'
+                          }}
+                        >
+                          <ListItemText
+                            primary={path.name || `Path ${path.id.slice(0, 8)}`}
+                            secondary={summary}
+                          />
+                          <Box>
+                            <IconButton
+                              size="small"
+                              edge="end"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEditPath(path);
+                              }}
+                            >
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                            <IconButton
+                              size="small"
+                              edge="end"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeletePath(path.id);
+                              }}
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </Box>
+                        </ListItem>
+                      );
+                    })}
                   </List>
                 </Box>
 
@@ -2341,8 +2506,8 @@ const MapEditor: React.FC<MapEditorProps> = ({
       </Grid>
 
       {/* Waypoint Dialog */}
-      <Dialog open={waypointDialogOpen} onClose={() => setWaypointDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Thêm Waypoint</DialogTitle>
+      <Dialog open={waypointDialogOpen} onClose={closeWaypointDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>{editingWaypointId ? 'Chỉnh sửa Waypoint' : 'Thêm Waypoint'}</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
             <TextField
@@ -2359,7 +2524,6 @@ const MapEditor: React.FC<MapEditorProps> = ({
                 value={newWaypointData?.x || 0}
                 onChange={(e) => setNewWaypointData(prev => prev ? { ...prev, x: Number(e.target.value) } : null)}
                 size="small"
-                disabled
               />
               <TextField
                 label="Y"
@@ -2367,7 +2531,6 @@ const MapEditor: React.FC<MapEditorProps> = ({
                 value={newWaypointData?.y || 0}
                 onChange={(e) => setNewWaypointData(prev => prev ? { ...prev, y: Number(e.target.value) } : null)}
                 size="small"
-                disabled
               />
               <TextField
                 label="Z"
@@ -2385,6 +2548,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
               onChange={(e) => setNewWaypointData(prev => prev ? { ...prev, orientation: Number(e.target.value) } : null)}
               size="small"
               fullWidth
+              helperText="Yaw (rad). Nếu có quaternion, hãy chuyển đổi về yaw trước khi nhập."
             />
             <TextField
               label="Mô tả"
@@ -2398,14 +2562,14 @@ const MapEditor: React.FC<MapEditorProps> = ({
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setWaypointDialogOpen(false)}>Hủy</Button>
+          <Button onClick={closeWaypointDialog}>Hủy</Button>
           <Button onClick={handleSaveWaypoint} variant="contained">Lưu</Button>
         </DialogActions>
       </Dialog>
 
       {/* Path Dialog */}
-      <Dialog open={pathDialogOpen} onClose={() => setPathDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Thêm Path</DialogTitle>
+      <Dialog open={pathDialogOpen} onClose={closePathDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>{editingPathId ? 'Chỉnh sửa Path' : 'Thêm Path'}</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
             <TextField
@@ -2420,7 +2584,17 @@ const MapEditor: React.FC<MapEditorProps> = ({
               <Select
                 value={newPathData?.type || 'direct'}
                 label="Loại path"
-                onChange={(e) => setNewPathData(prev => prev ? { ...prev, type: e.target.value as 'direct' | 'winding' } : null)}
+                onChange={(e) => setNewPathData(prev => {
+                  if (!prev) return null;
+                  const nextType = e.target.value as 'direct' | 'winding';
+                  return {
+                    ...prev,
+                    type: nextType,
+                    orientation: nextType === 'winding' ? (prev.orientation ?? 0) : undefined,
+                    intermediatePoints: nextType === 'winding' ? (prev.intermediatePoints || []) : undefined
+                  };
+                })}
+                MenuProps={{ onClose: () => handleSelectMenuClose() }}
               >
                 <MenuItem value="direct">Direct</MenuItem>
                 <MenuItem value="winding">Winding</MenuItem>
@@ -2432,6 +2606,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
                 value={newPathData?.startWaypointId || ''}
                 label="Điểm bắt đầu"
                 onChange={(e) => setNewPathData(prev => prev ? { ...prev, startWaypointId: e.target.value } : null)}
+                MenuProps={{ onClose: () => handleSelectMenuClose() }}
               >
                 {waypoints.map(wp => (
                   <MenuItem key={wp.id} value={wp.id}>{wp.name}</MenuItem>
@@ -2444,6 +2619,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
                 value={newPathData?.endWaypointId || ''}
                 label="Điểm kết thúc"
                 onChange={(e) => setNewPathData(prev => prev ? { ...prev, endWaypointId: e.target.value } : null)}
+                MenuProps={{ onClose: () => handleSelectMenuClose() }}
               >
                 {waypoints.map(wp => (
                   <MenuItem key={wp.id} value={wp.id}>{wp.name}</MenuItem>
@@ -2451,21 +2627,43 @@ const MapEditor: React.FC<MapEditorProps> = ({
               </Select>
             </FormControl>
             {newPathData?.type === 'winding' && (
-              <Typography variant="caption" color="text.secondary">
-                Path Winding sẽ xác định hướng của điểm cuối ngay từ đầu để đi thẳng tới điểm cuối dễ dàng hơn.
-              </Typography>
+              <>
+                <TextField
+                  label="Orientation (yaw radians)"
+                  type="number"
+                  size="small"
+                  fullWidth
+                  inputProps={{ step: 0.1 }}
+                  value={newPathData?.orientation ?? 0}
+                  onChange={(e) => setNewPathData(prev => prev ? { ...prev, orientation: Number(e.target.value) } : null)}
+                  helperText="Góc quay cuối (yaw). Chưa hỗ trợ kéo path thành cung tròn trực quan."
+                />
+                <Typography variant="caption" color="text.secondary">
+                  Path Winding dùng hướng cuối để robot tiếp cận điểm đích mượt hơn. Nếu cần đường cong phức tạp hãy thêm intermediate points thủ công (tính năng kéo trực tiếp sẽ cần phát triển thêm).
+                </Typography>
+              </>
             )}
+            <TextField
+              label="Mô tả"
+              value={newPathData?.description || ''}
+              onChange={(e) => setNewPathData(prev => prev ? { ...prev, description: e.target.value } : null)}
+              fullWidth
+              multiline
+              rows={2}
+              size="small"
+            />
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setPathDialogOpen(false)}>Hủy</Button>
+          <Button onClick={closePathDialog}>Hủy</Button>
           <Button onClick={handleSavePath} variant="contained">Lưu</Button>
         </DialogActions>
       </Dialog>
 
     </Box>
   );
-};
+});
 
+MapEditor.displayName = 'MapEditor';
 
 export default MapEditor;

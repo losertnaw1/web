@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, use } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Grid, Paper, Typography, Box, Button, FormControlLabel, Switch,
   Card, CardContent, Divider, Alert, Snackbar, IconButton, Tooltip, Collapse
@@ -27,6 +27,27 @@ interface Map2DPageProps {
   sensorData: SensorData;
   isConnected: boolean;
   onCommand: (command: string, params?: any) => void;
+}
+
+interface TaskActionSummary {
+  id: string;
+  type: string;
+  name: string;
+  parameters: Record<string, any>;
+  description?: string;
+  trueBranchActions?: TaskActionSummary[];
+  falseBranchActions?: TaskActionSummary[];
+}
+
+interface TaskSequenceSummary {
+  id: string;
+  name: string;
+  description: string;
+  actions: TaskActionSummary[];
+  status: 'idle' | 'running' | 'paused' | 'completed' | 'error';
+  created: string;
+  lastRun?: string;
+  currentActionIndex?: number;
 }
 
 const Map2DPage: React.FC<Map2DPageProps> = ({
@@ -66,8 +87,8 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
   const [robotControlCollapsed, setRobotControlCollapsed] = useState(true);
   const [mapControlCollapsed, setMapControlCollapsed] = useState(true);
 
-  // Current running task (mock data for now) - set to null to show save point feature
-  const [currentTask, setCurrentTask] = useState(null);
+  // Current running task displayed in TaskRunner
+  const [currentTask, setCurrentTask] = useState<TaskSequenceSummary | null>(null);
 
   // Function to save waypoint to backend
   const saveWaypointToBackend = async (waypointData: any) => {
@@ -112,11 +133,37 @@ const Map2DPage: React.FC<Map2DPageProps> = ({
     }
   }, [mainRef]);
 
+  const fetchRunningTask = useCallback(async () => {
+    if (!isConnected) {
+      setCurrentTask(null);
+      return;
+    }
+
+    try {
+      const response = await fetch(getApiUrl('/api/tasks/status/running'));
+      if (!response.ok) {
+        setCurrentTask(null);
+        return;
+      }
+
+      const data = await response.json();
+      setCurrentTask(data ?? null);
+    } catch (error) {
+      setCurrentTask(null);
+    }
+  }, [isConnected]);
+
   // Load current switch states and map data on component mount
   useEffect(() => {
     loadSwitchStates();
     fetchMapData();
   }, []);
+
+  useEffect(() => {
+    fetchRunningTask();
+    const interval = setInterval(fetchRunningTask, 5000);
+    return () => clearInterval(interval);
+  }, [fetchRunningTask]);
 
   // Fetch map data for this page
   const fetchMapData = async (forceRefresh = false) => {

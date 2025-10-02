@@ -169,6 +169,13 @@ class ROS1WebBridge:
             PoseWithCovarianceStamped,
             queue_size=10
         )
+
+        # Task execution publisher
+        self.tasks_pub = rospy.Publisher(
+            '/tasks',
+            String,
+            queue_size=10
+        )
         
         rospy.loginfo("ROS1 publishers initialized")
     
@@ -594,6 +601,21 @@ class ROS1WebBridge:
         
         self.initial_pose_pub.publish(msg)
         rospy.loginfo(f'Initial pose published: ({x}, {y}, {theta})')
+
+    def publish_task_sequence(self, task_payload: Dict[str, Any]) -> bool:
+        if not hasattr(self, 'tasks_pub') or self.tasks_pub is None:
+            rospy.logerr('Task publisher not initialized')
+            return False
+
+        try:
+            message = String()
+            message.data = json.dumps(task_payload)
+            self.tasks_pub.publish(message)
+            rospy.loginfo('Task sequence published to /tasks topic')
+            return True
+        except Exception as error:
+            rospy.logerr(f'Failed to publish task sequence: {error}')
+            return False
 
     def switch_map_topic(self, new_topic):
         """Switch map subscription to a different topic"""

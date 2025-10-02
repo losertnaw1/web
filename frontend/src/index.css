@@ -12,6 +12,6 @@ code {
     monospace;
 }
 
-.MuiButton-root {
-  text-transform: none;
+* {
+  text-transform: none !important;
 }

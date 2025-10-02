@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -31,7 +31,7 @@ import {
 } from '@mui/icons-material';
 import { getApiUrl } from '../config/config';
 import { useI18n } from '../i18n/i18n';
-import MapEditor from '../components/MapEditor';
+import MapEditor, { MapEditorHandle } from '../components/MapEditor';
 import MapMiniPreview from '../components/MapMiniPreview';
 
 // Types
@@ -115,6 +115,7 @@ const MapManagementPage: React.FC<MapManagementPageProps> = ({ isConnected }) =>
   const [mapToDelete, setMapToDelete] = useState<SavedMap | null>(null);
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
   const [previewMap, setPreviewMap] = useState<SavedMap | null>(null);
+  const mapEditorRef = useRef<MapEditorHandle | null>(null);
 
   const closeEditDialog = () => {
     setEditDialogOpen(false);
@@ -619,6 +620,7 @@ const MapManagementPage: React.FC<MapManagementPageProps> = ({ isConnected }) =>
         <DialogContent sx={{ height: '70vh' }}>
           {selectedMap && (
             <MapEditor
+              ref={mapEditorRef}
               key={selectedMap?.id ?? 'new-map'}
               initialElements={selectedMap.elements}
               width={selectedMap.width}
@@ -652,10 +654,19 @@ const MapManagementPage: React.FC<MapManagementPageProps> = ({ isConnected }) =>
                 };
                 handleSaveMap(updatedMap);
               }}
+              showSaveButton={false}
             />
           )}
         </DialogContent>
         <DialogActions>
+          <Button
+            onClick={() => mapEditorRef.current?.triggerSaveMap()}
+            variant="contained"
+            tabIndex={editDialogOpen ? 0 : -1}
+            disabled={!mapEditorRef.current}
+          >
+            Lưu map
+          </Button>
           <Button 
             onClick={closeEditDialog}
             tabIndex={editDialogOpen ? 0 : -1}

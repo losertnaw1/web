@@ -40,7 +40,7 @@ class Waypoint(BaseModel):
     orientation: float  # yaw in radians
     description: Optional[str] = None
 
-class Path(BaseModel):
+class MapPath(BaseModel):
     id: str
     name: Optional[str] = None
     type: str  # 'direct' or 'winding'
@@ -59,7 +59,7 @@ class SavedMap(BaseModel):
     created: str
     modified: str
     waypoints: Optional[List[Waypoint]] = None
-    paths: Optional[List[Path]] = None
+    paths: Optional[List[MapPath]] = None
 
 class ROS2OccupancyGrid(BaseModel):
     width: int

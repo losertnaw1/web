@@ -45,7 +45,6 @@ from api.auth import router as auth_router
 from api.diagnostics import router as diagnostics_router
 from api.maps import router as maps_router
 from api.waypoints import router as waypoints_router
-from api.tasks import router as tasks_router
 
 # Import WebSocket and other managers
 from websocket.websocket_manager import WebSocketManager
@@ -127,7 +126,6 @@ app.include_router(diagnostics_router, prefix="/api/diagnostics", tags=["diagnos
 # app.include_router(maps_router, prefix="/api/maps", tags=["maps"])  # Disabled - using ROS1 endpoints in main file
 
 app.include_router(waypoints_router, prefix="/api", tags=["waypoints"])
-app.include_router(tasks_router, prefix="/api", tags=["tasks"])
 
 # Serve static files (React frontend)
 frontend_path = Path(__file__).parent.parent.parent / "frontend" / "build"
@@ -1049,6 +1047,110 @@ def save_ros1_maps_to_file(maps: List[ROS1SavedMap]):
 
 NAVIGATION_LAUNCH_FILE = WORKSPACE_ROOT / "amr_master" / "launch" / "amr_navigation.launch"
 ROS_RESTART_COMMAND = os.environ.get("AMR_ROS_RESTART_CMD")
+
+TASKS_FILE = WORKSPACE_ROOT / "data" / "tasks.json"
+TASKS_FILE.parent.mkdir(parents=True, exist_ok=True)
+tasks_lock = asyncio.Lock()
+
+
+class TaskActionModel(BaseModel):
+    id: str
+    type: str
+    name: str
+    parameters: Dict[str, Any]
+    description: Optional[str] = None
+    loopId: Optional[str] = None
+    trueBranchActions: Optional[List['TaskActionModel']] = None
+    falseBranchActions: Optional[List['TaskActionModel']] = None
+
+
+class TaskSequenceModel(BaseModel):
+    id: str
+    name: str
+    description: str
+    actions: List[TaskActionModel]
+    status: str
+    created: str
+    lastRun: Optional[str] = None
+    currentActionIndex: Optional[int] = None
+    mapId: Optional[str] = None
+
+
+class TaskSequenceCreateModel(BaseModel):
+    name: str
+    description: str
+    actions: List[TaskActionModel]
+    mapId: Optional[str] = None
+
+
+class TaskSequenceUpdateModel(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    actions: Optional[List[TaskActionModel]] = None
+    status: Optional[str] = None
+    currentActionIndex: Optional[int] = None
+    mapId: Optional[str] = None
+
+
+TaskActionModel.update_forward_refs()
+TaskSequenceModel.update_forward_refs()
+
+
+def load_task_sequences() -> List[TaskSequenceModel]:
+    if not TASKS_FILE.exists():
+        return []
+
+    try:
+        with TASKS_FILE.open('r', encoding='utf-8') as f:
+            data = json.load(f)
+            tasks: List[TaskSequenceModel] = []
+            for item in data:
+                if isinstance(item, dict):
+                    if 'mapId' not in item and 'map_id' in item:
+                        item['mapId'] = item.get('map_id')
+                    tasks.append(TaskSequenceModel(**item))
+            return tasks
+    except Exception as error:
+        logger.error(f"Error loading tasks: {error}")
+        return []
+
+
+def save_task_sequences(tasks: List[TaskSequenceModel]):
+    serialized: List[Dict[str, Any]] = []
+    for task in tasks:
+        task_dict = task.dict()
+        serialized.append(task_dict)
+
+    try:
+        with TASKS_FILE.open('w', encoding='utf-8') as f:
+            json.dump(serialized, f, indent=2, ensure_ascii=False)
+    except Exception as error:
+        logger.error(f"Error saving tasks: {error}")
+        raise HTTPException(status_code=500, detail=f"Failed to save tasks: {error}")
+
+
+def read_active_map_metadata() -> Optional[Dict[str, Any]]:
+    if not ACTIVE_MAP_FILE.exists():
+        return None
+    try:
+        with ACTIVE_MAP_FILE.open('r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as error:
+        logger.warning(f"Failed to read active map metadata: {error}")
+        return None
+
+
+def resolve_map_name(map_id: Optional[str]) -> Optional[str]:
+    if not map_id:
+        return None
+    try:
+        maps = load_ros1_saved_maps()
+        for saved in maps:
+            if saved.id == map_id:
+                return saved.name
+    except Exception as error:
+        logger.warning(f"Failed to resolve map name for {map_id}: {error}")
+    return None
 
 
 def parse_polygon(points: Optional[List[Dict[str, float]]]) -> Optional[List[Tuple[float, float]]]:
@@ -2035,3 +2137,240 @@ def get_line_points_simple(x0: int, y0: int, x1: int, y1: int) -> list:
             y += sy
     
     return points
+
+
+@app.get("/api/tasks", response_model=List[TaskSequenceModel])
+async def api_get_tasks():
+    async with tasks_lock:
+        return load_task_sequences()
+
+
+@app.post("/api/tasks", response_model=TaskSequenceModel)
+async def api_create_task(task_data: TaskSequenceCreateModel):
+    new_task = TaskSequenceModel(
+        id=str(uuid.uuid4()),
+        name=task_data.name,
+        description=task_data.description,
+        actions=task_data.actions,
+        status="idle",
+        created=datetime.now().isoformat(),
+        mapId=task_data.mapId
+    )
+
+    async with tasks_lock:
+        tasks = load_task_sequences()
+        tasks.append(new_task)
+        save_task_sequences(tasks)
+
+    logger.info(f"[Tasks] Created task '{new_task.name}' with {len(new_task.actions)} actions")
+    return new_task
+
+
+@app.get("/api/tasks/{task_id}", response_model=TaskSequenceModel)
+async def api_get_task(task_id: str):
+    async with tasks_lock:
+        tasks = load_task_sequences()
+
+    task = next((t for t in tasks if t.id == task_id), None)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    return task
+
+
+@app.put("/api/tasks/{task_id}", response_model=TaskSequenceModel)
+async def api_update_task(task_id: str, update_data: TaskSequenceUpdateModel):
+    update_payload = update_data.dict(exclude_unset=True)
+
+    async with tasks_lock:
+        tasks = load_task_sequences()
+        task_index = next((i for i, t in enumerate(tasks) if t.id == task_id), None)
+        if task_index is None:
+            raise HTTPException(status_code=404, detail="Task not found")
+
+        task = tasks[task_index]
+
+        for field, value in update_payload.items():
+            if field == 'actions' and value is not None:
+                parsed_actions = []
+                for action in value:
+                    if isinstance(action, TaskActionModel):
+                        parsed_actions.append(action)
+                    else:
+                        parsed_actions.append(TaskActionModel(**action))
+                setattr(task, field, parsed_actions)
+            else:
+                setattr(task, field, value)
+
+        tasks[task_index] = task
+        save_task_sequences(tasks)
+
+    logger.info(f"[Tasks] Updated task '{task.name}'")
+    return task
+
+
+@app.delete("/api/tasks/{task_id}")
+async def api_delete_task(task_id: str):
+    async with tasks_lock:
+        tasks = load_task_sequences()
+        task_index = next((i for i, t in enumerate(tasks) if t.id == task_id), None)
+        if task_index is None:
+            raise HTTPException(status_code=404, detail="Task not found")
+
+        deleted_task = tasks.pop(task_index)
+        save_task_sequences(tasks)
+
+    logger.info(f"[Tasks] Deleted task '{deleted_task.name}'")
+    return {"status": "success", "message": f"Deleted task: {deleted_task.name}"}
+
+
+@app.post("/api/tasks/{task_id}/execute")
+async def api_execute_task(task_id: str):
+    async with tasks_lock:
+        tasks = load_task_sequences()
+
+    task = next((t for t in tasks if t.id == task_id), None)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    if not task.mapId:
+        raise HTTPException(status_code=400, detail="Task is not associated with a map. Please assign a map before starting.")
+
+    active_metadata = read_active_map_metadata()
+    if not active_metadata:
+        raise HTTPException(status_code=409, detail="No active map is currently deployed. Deploy a map before starting the task.")
+
+    active_map_id = active_metadata.get('id')
+    active_map_name = active_metadata.get('name') or resolve_map_name(active_metadata.get('id'))
+    task_map_name = resolve_map_name(task.mapId)
+
+    if active_map_id and task.mapId != active_map_id:
+        raise HTTPException(status_code=409, detail={
+            "error": "map_mismatch",
+            "taskMapId": task.mapId,
+            "taskMapName": task_map_name,
+            "activeMapId": active_map_id,
+            "activeMapName": active_map_name,
+            "message": "Task map does not match the active map. Deploy the correct map before starting this task."
+        })
+
+    if not active_map_id and active_map_name and task_map_name and active_map_name != task_map_name:
+        raise HTTPException(status_code=409, detail={
+            "error": "map_mismatch",
+            "taskMapId": task.mapId,
+            "taskMapName": task_map_name,
+            "activeMapId": active_map_id,
+            "activeMapName": active_map_name,
+            "message": "Task map does not match the active map. Deploy the correct map before starting this task."
+        })
+
+    ros_bridge = get_ros_bridge()
+    if not ros_bridge:
+        raise HTTPException(status_code=503, detail="ROS bridge is not connected. Cannot start task.")
+
+    if not hasattr(ros_bridge, 'publish_task_sequence'):
+        raise HTTPException(status_code=500, detail="Task publisher is not available in ROS bridge.")
+
+    task_payload = {
+        "task": task.dict(),
+        "requested_at": datetime.now().isoformat(),
+        "active_map": {
+            "id": active_map_id,
+            "name": active_map_name,
+            "metadata": active_metadata
+        }
+    }
+
+    try:
+        published = ros_bridge.publish_task_sequence(task_payload)
+    except Exception as error:
+        logger.error(f"[Tasks] Failed to publish task to ROS: {error}")
+        published = False
+
+    if not published:
+        raise HTTPException(status_code=500, detail="Failed to deliver task to ROS. Please check ROS connectivity and try again.")
+
+    async with tasks_lock:
+        tasks = load_task_sequences()
+        task_index = next((i for i, t in enumerate(tasks) if t.id == task_id), None)
+        if task_index is None:
+            raise HTTPException(status_code=404, detail="Task not found")
+
+        task = tasks[task_index]
+        task.status = "running"
+        task.lastRun = datetime.now().isoformat()
+        task.currentActionIndex = 0
+        tasks[task_index] = task
+        save_task_sequences(tasks)
+
+    logger.info(f"[Tasks] Started executing task '{task.name}'")
+    return {
+        "status": "success",
+        "message": f"Started executing task: {task.name}",
+        "task": task
+    }
+
+
+@app.post("/api/tasks/{task_id}/stop")
+async def api_stop_task(task_id: str):
+    async with tasks_lock:
+        tasks = load_task_sequences()
+        task_index = next((i for i, t in enumerate(tasks) if t.id == task_id), None)
+
+        if task_index is None:
+            raise HTTPException(status_code=404, detail="Task not found")
+
+        task = tasks[task_index]
+        task.status = "idle"
+        task.currentActionIndex = None
+        tasks[task_index] = task
+        save_task_sequences(tasks)
+
+    logger.info(f"[Tasks] Stopped task '{task.name}'")
+    return {
+        "status": "success",
+        "message": f"Stopped executing task: {task.name}",
+        "task": task
+    }
+
+
+@app.get("/api/tasks/status/running", response_model=Optional[TaskSequenceModel])
+async def api_get_running_task():
+    async with tasks_lock:
+        tasks = load_task_sequences()
+
+    return next((t for t in tasks if t.status == "running"), None)
+
+
+@app.post("/api/tasks/{task_id}/update-progress")
+async def api_update_task_progress(task_id: str, action_index: int):
+    async with tasks_lock:
+        tasks = load_task_sequences()
+        task_index = next((i for i, t in enumerate(tasks) if t.id == task_id), None)
+
+        if task_index is None:
+            raise HTTPException(status_code=404, detail="Task not found")
+
+        task = tasks[task_index]
+
+        if task.status != "running":
+            raise HTTPException(status_code=400, detail="Task is not currently running")
+
+        if action_index < 0 or action_index >= len(task.actions):
+            raise HTTPException(status_code=400, detail="Invalid action index")
+
+        task.currentActionIndex = action_index
+
+        if action_index >= len(task.actions) - 1:
+            task.status = "completed"
+            task.currentActionIndex = None
+
+        tasks[task_index] = task
+        save_task_sequences(tasks)
+
+    logger.info(f"[Tasks] Updated progress for task '{task.name}' -> action {action_index}")
+    return {
+        "status": "success",
+        "message": "Updated task progress",
+        "task": task
+    }
